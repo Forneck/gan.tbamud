@@ -7,6 +7,7 @@ import nltk
 import pickle
 import json
 import collections
+import datetime
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, DataLoader
 
@@ -21,7 +22,6 @@ estatisticas = {
     'acuracia_gerador': []
 }
 
-#nltk.download('punkt')
 token = 'HF-AUTH-TOKEN'
 
 def limit_noise_dim(value):
@@ -238,7 +238,6 @@ for tipo in types:
 dataset_gerador = GeneratorOutputDataset(gerador[tipo], noise_dim, num_samples)
 loader_gerador = DataLoader(dataset_gerador, batch_size=tamanho_lote, shuffle=True)
 
-
 # Treinando os modelos gerador e discriminador alternadamente
 for epoca in range(num_epocas):
     for tipo in types:
@@ -288,7 +287,11 @@ for epoca in range(num_epocas):
             estatisticas['perda_gerador'].append(perda_gerador.item())
             estatisticas['acuracia_discriminador'].append(acuracia_discriminador.item() / 2)
             estatisticas['acuracia_gerador'].append(acuracia_gerador.item())
-            with open('session-stats.json', 'w') as f:
+             # Obter o tempo atual
+            agora = datetime.datetime.now()
+            timestamp = agora.strftime("%Y-%m-%d_%H-%M-%S")
+            stats = f'session-stats_{timestamp}.json'
+            with open(stats,'w') as f:
                 json.dump(estatisticas, f)
             print('Salvando modelos')
             if args.save_mode == 'local':
