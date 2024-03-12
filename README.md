@@ -12,7 +12,7 @@ This script encodes the files in the `/lib/world` directory into a format that c
 
 This script also encodes the files in the `/lib/world` directory, but it treats each session within a file as a separate text.
 
-### testgan.py
+### testgen.py
 
 This script is used to test the current state of the generator.
 
@@ -23,7 +23,19 @@ This script trains the GAN using the encoded texts. It requires a `fake.pt` file
 - It allows you to specify the number of epochs, the number of samples, and the noise size through command-line arguments.
 - It uses PyTorch's DataSets and DataLoader to reduce memory usage.
 - It saves the training statistics at the end of each epoch.
-- It can save the model locally or on the cloud (Requires HuggingFace Token)
+- It can save the model locally or on the cloud (Requires HuggingFace Token).
+
+## Usage
+
+1) Edit you prefered encoder script to the path of your `lib/world/` directory. `enc-session.py` is the recomended version since it generates smaller texts.
+2) Place your `fake.pt` in the same directory.
+3) Edit `gan.py` to change the `types` for the script.
+4) Run `python gan.py` to run the training script. Use `--help` to see the avaiable arguments.
+5) At the end anytime of the training script, use `python testgen.py` for testing the generator.
+
+### Note
+
+To use cloud saving edit your token on `gan.py`
 
 ## License
 
