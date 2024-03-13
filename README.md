@@ -33,6 +33,21 @@ This script trains the GAN using the encoded texts. It requires a `fake.pt` file
 4) Run `python gan.py` to run the training script. Use `--help` to see the avaiable arguments.
 5) At the end anytime of the training script, use `python testgen.py` for testing the generator.
 
+## Gan.py command line arguments
+
+--save_mode {local,nuvem}
+                        Where to save the model after each epoch (local or cloud).
+  --num_epocas NUM_EPOCAS
+                        Max training epoch.
+  --num_samples NUM_SAMPLES
+                        How many samples are generated each epoch.
+  --noise_dim NOISE_DIM
+                        How big is the noise generated.
+  --noise_samples NOISE_SAMPLES
+                        How many samples of noise is generated each sample.
+  --help
+                        Show the available argument list with its help. (Actually in Portuguese. TODO translate to English)
+
 ### Note
 
 To use cloud saving edit your token on `gan.py`
