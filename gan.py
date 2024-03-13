@@ -291,8 +291,8 @@ for epoca in range(num_epocas):
             estatisticas['perda_gerador'].append(perda_gerador.item())
             estatisticas['acuracia_discriminador'].append(acuracia_discriminador.item() / 2)
             estatisticas['acuracia_gerador'].append(acuracia_gerador.item())
-             # Obter o tempo atual
-                        with open(stats,'w') as f:
+            # Save stats info
+            with open(stats,'w') as f:
                 json.dump(estatisticas, f)
             print('Salvando modelos')
             if args.save_mode == 'local':
