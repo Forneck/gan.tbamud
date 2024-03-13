@@ -150,7 +150,7 @@ for tipo in types:
 
 print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
-tamanho_lote = args.tamanho_lote 
+tamanho_lote = 1 #args.tamanho_lote 
 taxa_aprendizado_discriminador = 0.001
 taxa_aprendizado_gerador = 0.0001
 noise_dim = args.noise_dim # entre 1 e 100
