@@ -11,6 +11,10 @@ import datetime
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, DataLoader
 
+agora = datetime.datetime.now()
+timestamp = agora.strftime("%Y-%m-%d_%H-%M-%S")
+stats = f'session-stats_{timestamp}.json'
+
 # Inicialize um dicionário para armazenar as estatísticas
 estatisticas = {
     'tipo': [],
@@ -288,10 +292,7 @@ for epoca in range(num_epocas):
             estatisticas['acuracia_discriminador'].append(acuracia_discriminador.item() / 2)
             estatisticas['acuracia_gerador'].append(acuracia_gerador.item())
              # Obter o tempo atual
-            agora = datetime.datetime.now()
-            timestamp = agora.strftime("%Y-%m-%d_%H-%M-%S")
-            stats = f'session-stats_{timestamp}.json'
-            with open(stats,'w') as f:
+                        with open(stats,'w') as f:
                 json.dump(estatisticas, f)
             print('Salvando modelos')
             if args.save_mode == 'local':
