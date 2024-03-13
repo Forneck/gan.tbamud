@@ -47,16 +47,17 @@ class TextDataset(Dataset):
         return self.textos[idx], self.rotulos[idx]
 
 class GeneratorOutputDataset(Dataset):
-    def __init__(self, generator, noise_dim, num_samples):
+    def __init__(self, generator, noise_dim, num_samples,noise_samples):
         self.generator = generator
         self.noise_dim = noise_dim
         self.num_samples = num_samples
+        self.noise_samples = noise_samples
 
     def __len__(self):
         return self.num_samples
 
     def __getitem__(self, idx):
-        noise = torch.randint(0, self.noise_dim, (1, self.noise_dim))
+        noise = torch.randint(0, self.noise_dim, (self.noise_samples , self.noise_dim))
         sample, _ = self.generator(noise)
         return sample
 
@@ -101,12 +102,12 @@ for tipo in types:
     # Criar um dicionário que mapeia cada número para uma palavra, usando o inverso do dicionário anterior
     numero_para_palavra[tipo] = {i: palavra for palavra, i in palavra_para_numero[tipo].items()}
 
-def gerar_texto_falso(gerador_path, noise_dim, num_samples, tipo):
+def gerar_texto_falso(gerador_path, noise_dim, num_samples,noise_samples, tipo):
     # Carregando o modelo gerador
     gerador = torch.load(gerador_path)
 
     # Criando o dataset para as saídas do gerador
-    dataset_gerador = GeneratorOutputDataset(gerador, noise_dim, num_samples)
+    dataset_gerador = GeneratorOutputDataset(gerador, noise_dim, num_samples, noise_samples)
     loader_gerador = DataLoader(dataset_gerador, batch_size=1, shuffle=True)
 
     # Gerando um texto falso
@@ -117,8 +118,9 @@ def gerar_texto_falso(gerador_path, noise_dim, num_samples, tipo):
 # Definindo os parâmetros
 gerador_path = 'gerador_mob.pt'
 noise_dim = 50
+noise_samples = 2
 num_samples = 1
 tipo = '.mob'
 
 # Gerando o texto falso
-gerar_texto_falso(gerador_path, noise_dim, num_samples, tipo)
+gerar_texto_falso(gerador_path, noise_dim, num_samples, noise_samples, tipo)

@@ -43,7 +43,7 @@ parser.add_argument('--num_epocas', type=int, default=1, help='Número de época
 parser.add_argument('--tamanho_lote', type=int, default=1, help='Tamanho do lote para treinamento')
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
 parser.add_argument('--noise_dim', type=limit_noise_dim, default=50, help='Dimensão do ruído para o gerador')
-
+parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador') 
 args = parser.parse_args()
 
 print('Definindo a arquitetura do modelo gerador')
@@ -90,16 +90,17 @@ class TextDataset(Dataset):
         return self.textos[idx], self.rotulos[idx]
 
 class GeneratorOutputDataset(Dataset):
-    def __init__(self, generator, noise_dim, num_samples):
+    def __init__(self, generator, noise_dim, num_samples,noise_samples):
         self.generator = generator
         self.noise_dim = noise_dim
         self.num_samples = num_samples
+        self.noise_samples = noise_samples
 
     def __len__(self):
         return self.num_samples
 
     def __getitem__(self, idx):
-        noise = torch.randint(0, self.noise_dim, (1, self.noise_dim))
+        noise = torch.randint(0, self.noise_dim, (self.noise_samples, self.noise_dim))
         sample, _ = self.generator(noise)
         return sample
 
@@ -153,6 +154,7 @@ tamanho_lote = args.tamanho_lote
 taxa_aprendizado_discriminador = 0.001
 taxa_aprendizado_gerador = 0.0001
 noise_dim = args.noise_dim # entre 1 e 100
+noise_samples = args.noise_samples #numero de amostras de ruído
 num_samples = args.num_samples #numero de amostras dentro da mesma época
 
 textos_falsos = {}
@@ -239,7 +241,7 @@ for tipo in types:
     otimizador_gerador[tipo] = torch.optim.Adam(gerador[tipo].parameters(), lr=taxa_aprendizado_gerador)
 
 # Criando o dataset para as saídas do gerador
-dataset_gerador = GeneratorOutputDataset(gerador[tipo], noise_dim, num_samples)
+dataset_gerador = GeneratorOutputDataset(gerador[tipo], noise_dim, num_samples, noise_samples)
 loader_gerador = DataLoader(dataset_gerador, batch_size=tamanho_lote, shuffle=True)
 
 # Treinando os modelos gerador e discriminador alternadamente
