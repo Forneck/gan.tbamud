@@ -214,7 +214,7 @@ for tipo in types:
         gerador[tipo] = torch.load(gerador_path)
     else:
         print('Criar novo gerador')
-        gerador[tipo] = Gerador(len(vocabs[tipo]), 256, 512, output_size)
+        gerador[tipo] = Gerador(len(palavra_para_numero[tipo]), 256, 512, output_size)
 
     print('Verificando se o discriminador existe para o tipo: ', tipo[1:])
     if os.path.exists(discriminador_path):
@@ -222,7 +222,7 @@ for tipo in types:
         discriminador[tipo] = torch.load(discriminador_path)
     else:
         print('Criar novo discriminador')
-        discriminador[tipo] = Discriminador(len(vocabs[tipo]), 256, 512)
+        discriminador[tipo] = Discriminador(len(palavra_para_numero[tipo]), 256, 512)
 
 
 # Criando os otimizadores para cada modelo
