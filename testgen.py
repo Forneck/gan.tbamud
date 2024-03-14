@@ -1,6 +1,8 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 import nltk
+import os
+import json
 
 
 print('Definindo a arquitetura do modelo gerador')
@@ -62,45 +64,32 @@ class GeneratorOutputDataset(Dataset):
         return sample
 
 types= ['.mob']
+pasta = os.path.expanduser('~/mud/gan/v1')
 
-print('Definindo o Encoder')
-def encoder(texto, tipo):
-    # Codificar o texto usando o dicionário palavra_para_numero do tipo de arquivo correspondente
-    return [palavra_para_numero[tipo].get(palavra, 0) for palavra in nltk.word_tokenize(texto)]  # usando o nltk para tokenizar
+def carregar_vocabulario(pasta, types):
+    palavra_para_numero = {}
+    numero_para_palavra = {}
+    textos_reais = {}
+
+    for tipo in types:
+        print(f'Carregando os arquivos {tipo[1:]}.pt')
+        textos_reais[tipo] = torch.load(os.path.join(pasta, tipo[1:] + '.pt'))
+
+        print(f'Carregando o vocabulário para o tipo {tipo}')
+        # Correção na formatação do nome do arquivo JSON
+        with open(os.path.join(pasta, f'vocabulario{tipo}.json'), 'r') as f:
+            palavra_para_numero[tipo] = json.load(f)
+            # Criando o dicionário numero_para_palavra
+            numero_para_palavra[tipo] = {i: palavra for palavra, i in palavra_para_numero[tipo].items()}
+
+    return palavra_para_numero, numero_para_palavra, textos_reais
 
 print('Definindo o Decoder')
-def decoder(texto_codificado, tipo):
-    # Decodificar o texto usando o dicionário numero_para_palavra do tipo de arquivo correspondente
-    return ' '.join([numero_para_palavra[tipo].get(numero, '<UNK>') for numero in texto_codificado])  # usando o nltk para juntar as palavras
+def decoder(texto_codificado, tipo, numero_para_palavra):
+       # Decodificar o texto usando o dicionário numero_para_palavra do tipo de arquivo correspondente
+      return ' '.join([numero_para_palavra[tipo].get(numero, '<UNK>') for numero in texto_codificado])
 
-# Mapeando cada palavra para um número único e número para palavra correspondente para cada tipo de arquivo
-palavra_para_numero = {}
-numero_para_palavra = {}
-# Carregando os arquivos .pt que estão dentro do Colab
-textos_reais = {}
-for tipo in types:
-  textos_reais[tipo] = []
-  print(f'Carregando os arquivos {tipo[1:]}.pt')
-  textos_reais[tipo] = torch.load(tipo[1:]+'.pt')
-
-print('Construindo o vocabulário para cada tipo de arquivo')
-vocabs = {}
-for tipo in types:
-    # Criar um conjunto vazio para armazenar as palavras do tipo de arquivo atual
-    vocab = set()
-    for texto in textos_reais[tipo]:
-        for palavra in nltk.word_tokenize(str(texto)):  # usando o nltk para tokenizar
-            vocab.add(palavra)
-    # Adicionar o conjunto vocab ao dicionário vocabs, usando o tipo de arquivo como chave
-    vocabs[tipo] = vocab
-
-for tipo in types:
-    # Obter o vocabulário do tipo de arquivo atual
-    vocab = vocabs[tipo]
-    # Criar um dicionário que mapeia cada palavra para um número, usando a ordem alfabética
-    palavra_para_numero[tipo] = {palavra: i for i, palavra in enumerate(sorted(vocab))}
-    # Criar um dicionário que mapeia cada número para uma palavra, usando o inverso do dicionário anterior
-    numero_para_palavra[tipo] = {i: palavra for palavra, i in palavra_para_numero[tipo].items()}
+palavra_para_numero, numero_para_palavra,textos_reais = carregar_vocabulario(pasta, types)
 
 def gerar_texto_falso(gerador_path, noise_dim, num_samples,noise_samples, tipo):
     # Carregando o modelo gerador
@@ -111,9 +100,15 @@ def gerar_texto_falso(gerador_path, noise_dim, num_samples,noise_samples, tipo):
     loader_gerador = DataLoader(dataset_gerador, batch_size=1, shuffle=True)
 
     # Gerando um texto falso
-    for texto_falso in loader_gerador:
-        texto_decodificado=decoder(texto_falso, tipo)
-        print(texto_decodificado)
+    for batch in loader_gerador:
+        batch = batch.to(torch.int64)
+        for texto_falso in batch.tolist():
+            for lista in texto_falso:
+                for sublista in lista:
+                    for numero in sublista:
+                        texto_decodificado = decoder([numero], tipo, numero_para_palavra)
+                        print(texto_decodificado, end='')
+
 
 # Definindo os parâmetros
 gerador_path = 'gerador_mob.pt'
