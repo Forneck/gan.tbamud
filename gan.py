@@ -47,6 +47,7 @@ parser.add_argument('--num_epocas', type=int, default=1, help='Número de época
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
 parser.add_argument('--noise_dim', type=limit_noise_dim, default=50, help='Dimensão do ruído para o gerador')
 parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador') 
+parser.add_argument('--verbose', choices=['on', 'off'], default='off', help='Exibir saida do gerador')
 args = parser.parse_args()
 
 print('Definindo a arquitetura do modelo gerador')
@@ -103,7 +104,8 @@ class GeneratorOutputDataset(Dataset):
         return self.num_samples
 
     def __getitem__(self, idx):
-        noise = torch.randint(0, self.noise_dim, (self.noise_samples, self.noise_dim))
+        noise = torch.randint(0, self.noise_dim, (self.noise_samples , self.noise_dim))
+        print('Noise: ', noise)
         sample, _ = self.generator(noise)
         return sample
 
@@ -214,7 +216,7 @@ for tipo in types:
         gerador[tipo] = torch.load(gerador_path)
     else:
         print('Criar novo gerador')
-        gerador[tipo] = Gerador(len(palavra_para_numero[tipo]), 256, 512, output_size)
+        gerador[tipo] = Gerador(len(numero_para_palavra[tipo]), 256, 512, output_size)
 
     print('Verificando se o discriminador existe para o tipo: ', tipo[1:])
     if os.path.exists(discriminador_path):
@@ -222,7 +224,7 @@ for tipo in types:
         discriminador[tipo] = torch.load(discriminador_path)
     else:
         print('Criar novo discriminador')
-        discriminador[tipo] = Discriminador(len(palavra_para_numero[tipo]), 256, 512)
+        discriminador[tipo] = Discriminador(len(numero_para_palavra[tipo]), 256, 512)
 
 
 # Criando os otimizadores para cada modelo
@@ -251,8 +253,14 @@ for epoca in range(num_epocas):
             print('Zerando a acurácia para a amostra')
             acuracia_discriminador, acuracia_gerador = 0, 0
             print('Calculando a perda do discriminador, usando os textos reais e os textos falsos')
-            textos_falsos = textos_falsos.long()
+            if args.verbose == 'on':
+                print(textos_falsos)
+            textos_falsos = textos_falsos.to(torch.int64)
             textos_falsos = textos_falsos.view(textos_falsos.size(0), -1)
+            textos_falsos_lista = textos_falsos[0].tolist()
+            if args.verbose == 'on':
+                 print(textos_falsos)
+                #print('Saida gerador: ', decoder(textos_falsos_lista,tipo,numero_para_palavra))
             saida_real, _ = discriminador[tipo](textos)
             saida_falso, _ = discriminador[tipo](textos_falsos)
             rotulos = rotulos.float()

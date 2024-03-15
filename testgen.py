@@ -103,7 +103,8 @@ def gerar_texto_falso(gerador_path, noise_dim, num_samples,noise_samples, tipo):
 
     with torch.no_grad():
         for textos_falsos in loader_gerador:
-            textos_falsos = textos_falsos.long()
+            textos_falsos = textos_falsos.to(torch.int64)
+            print(textos_falsos)
             _, _, _, output_size = textos_falsos.shape
             texto_falso = textos_falsos.view(-1, output_size) 
             print(texto_falso.shape)
