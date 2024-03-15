@@ -47,10 +47,11 @@ parser.add_argument('--tamanho_lote', type=int, default=1, help='Tamanho do lote
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
 parser.add_argument('--noise_dim', type=limit_noise_dim, default=50, help='Dimensão do ruído para o gerador')
 parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador') 
-parser.add_argument('--verbose', choices=['on', 'off'], default='off', help='Exibir saida do gerador')
+parser.add_argument('--verbose', choices=['on', 'off'], default='off', help='Mais informações de saída')
 args = parser.parse_args()
 
-print('Definindo a arquitetura do modelo gerador')
+if args.verbose == 'on':
+    print('Definindo a arquitetura do modelo gerador')
 class Gerador(torch.nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_dim, output_size):
         super(Gerador, self).__init__()
@@ -66,7 +67,8 @@ class Gerador(torch.nn.Module):
         output = self.softmax(output)
         return output, hidden
 
-print('Definindo a arquitetura do modelo discriminador')
+if args.verbose == 'on':
+    print('Definindo a arquitetura do modelo discriminador')
 class Discriminador(torch.nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_dim):
         super(Discriminador, self).__init__()
@@ -112,12 +114,14 @@ class GeneratorOutputDataset(Dataset):
         sample, _ = self.generator(noise)
         return sample
 
-print('Definindo o Encoder')
+if args.verbose == 'on':
+    print('Definindo o Encoder')
 def encoder(palavras, tipo, palavra_para_numero):
    # return [palavra_para_numero[tipo].get(palavra, 0) for palavra in nltk.word_tokenize(texto)]  # usando o nltk para tokenizar
     return [palavra_para_numero[tipo].get(palavra, 0) for palavra in palavras]
 
-print('Definindo o Decoder')
+if args.verbose == 'on':
+    print('Definindo o Decoder')
 def decoder(texto_codificado, tipo, numero_para_palavra):
       return ' '.join([numero_para_palavra[tipo].get(numero, '<UNK>') for numero in texto_codificado])
 
@@ -141,7 +145,8 @@ def carregar_vocabulario(pasta, types):
 
 # Agora você pode usar args.num_epocas, args.tamanho_lote, args.noise_dim e args.num_samples
 
-print('Definindo os parâmetros de treinamento')
+if args.verbose == 'on':
+    print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
 tamanho_lote = 1 #args.tamanho_lote 
 taxa_aprendizado_discriminador = 0.001
@@ -161,8 +166,9 @@ for tipo in types:
     fake = 'fake.pt'
     textos_falsos[tipo] = torch.load(fake) 
 
-    print("Formato dos textos reais:",textos_reais[tipo].shape)
-    print("Formato dos textos falsos:", textos_falsos[tipo].shape)
+    if args.verbose == 'on':
+        print("Formato dos textos reais:",textos_reais[tipo].shape)
+        print("Formato dos textos falsos:", textos_falsos[tipo].shape)
     # Padronizando o tamanho dos textos reais e falsos
     max_length = max(max([len(t) for t in textos_reais[tipo]]), max([len(t) for t in textos_falsos[tipo]]))
     textos_reais_pad = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t)))) for t in textos_reais[tipo]], batch_first=True)
@@ -246,16 +252,21 @@ for epoca in range(num_epocas):
         print(f'Colocando os modelos em modo de treinamento para epoca {epoca + 1}')
         gerador[tipo].train()
         discriminador[tipo].train()
-        print('Inicializando as perdas e as acurácias')
+        if args.verbose == 'on':
+            print('Inicializando as perdas e as acurácias')
         perda_discriminador, perda_gerador = 0, 0
         acuracia_discriminador, acuracia_gerador = 0, 0
-        print('Percorrendo cada lote de dados')
+        if args.verbose == 'on':
+            print('Percorrendo cada lote de dados')
         for (textos, rotulos), textos_falsos in zip(train_loaders[tipo], loader_gerador):
-            print('Obtendo os textos e os rótulos do lote / amostra')
+            if args.verbose == 'on':
+                print('Obtendo os textos e os rótulos do lote / amostra')
             rotulos = rotulos.view(-1,1)
-            print('Zerando a acurácia para a amostra')
+            if args.verbose == 'on':
+                print('Zerando a acurácia para a amostra')
             acuracia_discriminador, acuracia_gerador = 0, 0
-            print('Calculando a perda do discriminador, usando os textos reais e os textos falsos')
+            if args.verbose == 'on':
+                print('Calculando a perda do discriminador, usando os textos reais e os textos falsos')
             if args.verbose == 'on':
                 print(textos_falsos)
             #Obtendo o índice da palavra com a maior probabilidade
@@ -270,18 +281,22 @@ for epoca in range(num_epocas):
             perda_real = criterio_discriminador(saida_real, rotulos)
             perda_falso = criterio_discriminador(saida_falso, torch.zeros_like(rotulos))
             perda_discriminador = (perda_real + perda_falso) / 2
-            print('Atualizando os parâmetros do discriminador')
+            if args.verbose == 'on':
+                print('Atualizando os parâmetros do discriminador')
             otimizador_discriminador[tipo].zero_grad()
             perda_discriminador.backward()
             otimizador_discriminador[tipo].step()
             saida_falso, _ = discriminador[tipo](textos_falsos)
-            print('Calculando a perda do gerador, usando os textos falsos e os rótulos invertidos')
+            if args.verbose == 'on':
+                print('Calculando a perda do gerador, usando os textos falsos e os rótulos invertidos')
             perda_gerador = criterio_discriminador(saida_falso, torch.ones_like(rotulos))
-            print('Atualizando os parâmetros do gerador')
+            if args.verbose == 'on':
+                print('Atualizando os parâmetros do gerador')
             otimizador_gerador[tipo].zero_grad()
             perda_gerador.backward()
             otimizador_gerador[tipo].step()
-            print('Calculando a acurácia do discriminador e do gerador')
+            if args.verbose == 'on':
+                print('Calculando a acurácia do discriminador e do gerador')
             acuracia_discriminador += ((saida_real > 0.5) == rotulos).float().mean()
             acuracia_discriminador += ((saida_falso < 0.5) == torch.zeros_like(rotulos)).float().mean()
             acuracia_gerador += ((saida_falso > 0.5) == torch.ones_like(rotulos)).float().mean()
