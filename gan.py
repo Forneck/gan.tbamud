@@ -43,7 +43,7 @@ def limit_noise_dim(value):
 parser = argparse.ArgumentParser()
 parser.add_argument('--save_mode', choices=['local', 'nuvem'], default='local', help='Escolha onde salvar o modelo')
 parser.add_argument('--num_epocas', type=int, default=1, help='Número de épocas para treinamento')
-#parser.add_argument('--tamanho_lote', type=int, default=1, help='Tamanho do lote para treinamento')
+parser.add_argument('--tamanho_lote', type=int, default=1, help='Tamanho do lote para treinamento')
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
 parser.add_argument('--noise_dim', type=limit_noise_dim, default=50, help='Dimensão do ruído para o gerador')
 parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador') 
