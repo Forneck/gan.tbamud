@@ -94,26 +94,25 @@ palavra_para_numero, numero_para_palavra,textos_reais = carregar_vocabulario(pas
 def gerar_texto_falso(gerador_path, noise_dim, num_samples,noise_samples, tipo):
     # Carregando o modelo gerador
     gerador = torch.load(gerador_path)
+    gerador.eval()
 
     # Criando o dataset para as saídas do gerador
     dataset_gerador = GeneratorOutputDataset(gerador, noise_dim, num_samples, noise_samples)
     loader_gerador = DataLoader(dataset_gerador, batch_size=1, shuffle=True)
 
-    # Gerando um texto falso
-    for batch in loader_gerador:
-        batch = batch.to(torch.int64)
-        for texto_falso in batch.tolist():
-            for lista in texto_falso:
-                for sublista in lista:
-                    for numero in sublista:
-                        texto_decodificado = decoder([numero], tipo, numero_para_palavra)
-                        print(texto_decodificado, end='')
-
+    with torch.no_grad():
+        for textos_falsos in loader_gerador:
+            textos_falsos = textos_falsos.long()
+            _, _, _, output_size = textos_falsos.shape
+            texto_falso = textos_falsos.view(-1, output_size) 
+            print(texto_falso.shape)
+            for texto in texto_falso:
+                print(decoder(texto.tolist(),tipo,numero_para_palavra))  # Supondo que 'decoder' é a sua função 
 
 # Definindo os parâmetros
 gerador_path = 'gerador_mob.pt'
 noise_dim = 50
-noise_samples = 2
+noise_samples = 1
 num_samples = 1
 tipo = '.mob'
 
