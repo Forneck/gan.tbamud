@@ -33,8 +33,8 @@ token = 'HF-AUTH-TOKEN'
 
 def limit_noise_dim(value):
     ivalue = int(value)
-    if ivalue > 100:
-        ivalue = 100
+    if ivalue > 253:
+        ivalue = 253
     if ivalue < 1:
         ivalue = 1
     return ivalue
