@@ -57,7 +57,7 @@ class Gerador(torch.nn.Module):
         self.embedding = torch.nn.Embedding(vocab_size, embedding_dim)
         self.lstm = torch.nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
         self.linear = torch.nn.Linear(hidden_dim, output_size)
-        self.softmax = nn.Softmax(dim=1)
+        self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, input, hidden=None):
         embedded = self.embedding(input)
@@ -257,9 +257,9 @@ for epoca in range(num_epocas):
             print('Calculando a perda do discriminador, usando os textos reais e os textos falsos')
             if args.verbose == 'on':
                 print(textos_falsos)
-            #textos_falsos = textos_falsos.view(textos_falsos.size(0), -1)
             #Obtendo o índice da palavra com a maior probabilidade
             textos_falsos= torch.argmax(textos_falsos,dim=-1)
+            textos_falsos = textos_falsos.view(textos_falsos.size(0), -1)
             if args.verbose == 'on':
                  print(textos_falsos)
             # Passando o texto falso para o discriminador

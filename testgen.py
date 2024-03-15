@@ -12,7 +12,7 @@ class Gerador(torch.nn.Module):
         self.embedding = torch.nn.Embedding(vocab_size, embedding_dim)
         self.lstm = torch.nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
         self.linear = torch.nn.Linear(hidden_dim, output_size)
-        self.softmax = nn.Softmax(dim=1)
+        self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, input, hidden=None):
         embedded = self.embedding(input)
