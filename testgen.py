@@ -62,7 +62,7 @@ class GeneratorOutputDataset(Dataset):
 
     def __getitem__(self, idx):
         noise = torch.randint(0, self.noise_dim, (self.noise_samples , self.noise_dim))
-        print('Noise:' ,noise)
+        #print('Noise:' ,noise)
         sample, _ = self.generator(noise)
         return sample
 
@@ -107,20 +107,20 @@ def gerar_texto_falso(gerador_path, noise_dim, num_samples,noise_samples, tipo):
     with torch.no_grad():
         for batch in loader_gerador:
             texto_falso = batch
-            print('Formato de texto_falso:',texto_falso.shape)
+            #print('Formato de texto_falso:',texto_falso.shape)
             # Obtendo o índice da palavra com a maior probabilidade
             texto_falso_max = torch.argmax(texto_falso, dim=-1)
             texto_falso_lista = texto_falso_max.tolist()
-            print('Formato depois do argmax:', texto_falso_max.shape)
-            print(texto_falso_max)
-            print('Formato da lista',texto_falso_lista)
+            #print('Formato depois do argmax:', texto_falso_max.shape)
+            #print(texto_falso_max)
+            #print('Formato da lista',texto_falso_lista)
             print('Saida gerador: ', decoder(texto_falso_lista[0][0],tipo,numero_para_palavra))
 
 # Definindo os parâmetros
 gerador_path = 'gerador_mob.pt'
-noise_dim = 50
+noise_dim = 100
 noise_samples = 1
-num_samples = 1
+num_samples = 10
 tipo = '.mob'
 
 # Gerando o texto falso
