@@ -60,6 +60,7 @@ class GeneratorOutputDataset(Dataset):
 
     def __getitem__(self, idx):
         noise = torch.randint(0, self.noise_dim, (self.noise_samples , self.noise_dim))
+        print('Noise:' ,noise)
         sample, _ = self.generator(noise)
         return sample
 
