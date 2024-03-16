@@ -11,8 +11,8 @@ import random
 from torch.nn.utils.rnn import pad_sequence
 
 pasta = os.path.expanduser('~/mud/gan/v1/')
-types = ['.mob']
-
+types = ['.mob', '.obj', '.wld', '.zon', '.shp', '.trg', '.qst']
+textos_falsos = {}
 def carregar_vocabulario(pasta, types):
     palavra_para_numero = {}
     numero_para_palavra = {}
@@ -42,17 +42,16 @@ for tipo in types:
         random_list = []  # Inicialize random_list dentro do loop
         porcentagem = (i/len(textos_reais[tipo]))*100
         print(f'Gerando texto falso {i} de {len(textos_reais[tipo])} ({porcentagem:.4f}%)')
-        for _ in range(250):
+        for _ in range(random.randint(50,max([len(t) for t in textos_reais[tipo]]))):
             random_number = random.randint(0, len(palavra_para_numero[tipo]) - 1)
             random_list.append(random_number) 
-        textos_falsos.append(random_list)
+        textos_falsos[tipo].append(random_list)
 
     # Converta a lista de listas em um tensor 2D
-    textos_falsos = torch.tensor(textos_falsos, dtype=torch.float32)
-    # Agora textos_falsos deve ter o formato [3752, 250]
-    print(textos_falsos.shape)
+    textos_falsos[tipo]= torch.tensor(textos_falsos[tipo], dtype=torch.float32)
+    
     print('Salvando progresso')
-        # Padronizando o tamanho dos textos falsos
-    textos_falsos_pad = torch.nn.utils.rnn.pad_sequence(textos_falsos,batch_first=True)  # Corrigido para textos_falsos_pad
+    # Padronizando o tamanho dos textos falsos
+    textos_falsos_pad = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t)))) for t in textos_falsos[tipo]], batch_first=True)
     # Salvando os textos falsos em arquivos .pt
-    torch.save(textos_falsos_pad, fake)  # Corrigido para textos_falsos_pad
+    torch.save(textos_falsos_pad, fake) 
