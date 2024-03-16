@@ -150,8 +150,8 @@ if args.verbose == 'on':
     print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
 tamanho_lote = 1 #args.tamanho_lote 
-taxa_aprendizado_discriminador = 0.001
-taxa_aprendizado_gerador = 0.0001
+taxa_aprendizado_discriminador = 0.0001
+taxa_aprendizado_gerador = 0.001
 noise_dim = args.noise_dim # entre 1 e 100
 noise_samples = args.noise_samples #numero de amostras de ruído
 num_samples = args.num_samples #numero de amostras dentro da mesma época
@@ -209,7 +209,7 @@ for tipo in types:
 
 # Definindo o objetivo de aprendizado
 criterio_discriminador = torch.nn.BCELoss()
-criterio_gerador = torch.nn.MSELoss()
+criterio_gerador = torch.nn.NLLLoss()
 
 # Criando os modelos gerador e discriminador para cada tipo de texto
 gerador, discriminador = {}, {}
