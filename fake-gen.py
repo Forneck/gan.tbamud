@@ -49,7 +49,7 @@ for tipo in types:
         textos_falsos.append(random_list)
     
     print('Salvando progresso')
-    max_length = max(max([len(t) for t in textos_reais[tipo]]), max([len(t) for t in textos_falsos[tipo]]))   
+    max_length = max([len(t) for t in textos_reais[tipo]])   
     # Padronizando o tamanho dos textos falsos
     textos_falsos_pad = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t)))) for t in textos_falsos], batch_first=True)
     # Salvando os textos falsos em arquivos .pt
