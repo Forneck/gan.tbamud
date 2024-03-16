@@ -1,4 +1,5 @@
 *.pt
-rotulos*.json
+*_rotulos.json
 session*.json
 *-beta.py
+*.sh
