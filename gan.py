@@ -340,6 +340,6 @@ if args.save_time == 'session':
     if args.save_mode == 'local':
         torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
         torch.save(discriminador[tipo], os.path.expanduser('discriminador_' + tipo[1:] + '.pt'))
-     elif args.save_mode == 'nuvem':
+    elif args.save_mode == 'nuvem':
         gerador[tipo].save_pretrained('https://huggingface.co/' + 'gerador_' + tipo[1:], use_auth_token=token)
         discriminador[tipo].save_pretrained('https://huggingface.co/' + 'discriminador_' + tipo[1:], use_auth_token=token)
