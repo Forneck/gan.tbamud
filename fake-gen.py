@@ -45,13 +45,12 @@ for tipo in types:
         for _ in range(random.randint(50,max([len(t) for t in textos_reais[tipo]]))):
             random_number = random.randint(0, len(palavra_para_numero[tipo]) - 1)
             random_list.append(random_number) 
-        textos_falsos[tipo].append(random_list)
-
-    # Converta a lista de listas em um tensor 2D
-    textos_falsos[tipo]= torch.tensor(textos_falsos[tipo], dtype=torch.float32)
+        random_list = torch.tensor(random_list, dtype=torch.float32)
+        textos_falsos.append(random_list)
     
     print('Salvando progresso')
+    max_length = max(max([len(t) for t in textos_reais[tipo]]), max([len(t) for t in textos_falsos[tipo]]))   
     # Padronizando o tamanho dos textos falsos
-    textos_falsos_pad = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t)))) for t in textos_falsos[tipo]], batch_first=True)
+    textos_falsos_pad = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t)))) for t in textos_falsos], batch_first=True)
     # Salvando os textos falsos em arquivos .pt
     torch.save(textos_falsos_pad, fake) 

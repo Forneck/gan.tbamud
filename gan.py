@@ -163,7 +163,7 @@ train_loaders, valid_loaders, test_loaders = {}, {}, {}
 palavra_para_numero, numero_para_palavra,textos_reais = carregar_vocabulario(pasta, types)
 for tipo in types:
     textos_falsos[tipo] = []
-    fake = 'fake.pt'
+    fake = 'fake_' + tipo[1:] + '.pt'
     textos_falsos[tipo] = torch.load(fake) 
 
     if args.verbose == 'on':

@@ -118,9 +118,9 @@ def gerar_texto_falso(gerador_path, noise_dim, num_samples,noise_samples, tipo):
 
 # Definindo os parâmetros
 gerador_path = 'gerador_mob.pt'
-noise_dim = 100
-noise_samples = 1
-num_samples = 10
+noise_dim = 50
+noise_samples = 50
+num_samples = 2
 tipo = '.mob'
 
 # Gerando o texto falso

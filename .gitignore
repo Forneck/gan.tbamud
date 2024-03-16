@@ -1,3 +1,4 @@
 *.pt
-*.json
+rotulos*.json
+session*.json
 *-beta.py
