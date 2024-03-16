@@ -42,6 +42,7 @@ def limit_noise_dim(value):
 # Definindo o argumento para escolher entre salvar localmente ou na nuvem
 parser = argparse.ArgumentParser()
 parser.add_argument('--save_mode', choices=['local', 'nuvem'], default='local', help='Escolha onde salvar o modelo')
+parser.add_argument('--save_time', choices=['sample', 'epoch', 'session'], default='sample', help='Escolha quando salvar o modelo')
 parser.add_argument('--num_epocas', type=int, default=1, help='Número de épocas para treinamento')
 parser.add_argument('--tamanho_lote', type=int, default=1, help='Tamanho do lote para treinamento')
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
@@ -313,10 +314,32 @@ for epoca in range(num_epocas):
             # Save stats info
             with open(stats,'w') as f:
                 json.dump(estatisticas, f)
-            print('Salvando modelos')
-            if args.save_mode == 'local':
-                torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
-                torch.save(discriminador[tipo], os.path.expanduser('discriminador_' + tipo[1:] + '.pt'))
-            elif args.save_mode == 'nuvem':
-                gerador[tipo].save_pretrained('https://huggingface.co/' + 'gerador_' + tipo[1:], use_auth_token=token)
-                discriminador[tipo].save_pretrained('https://huggingface.co/' + 'discriminador_' + tipo[1:], use_auth_token=token)
+            if args.save_time == 'sample':
+                if args.verbose == 'on':
+                    print('Salvando modelos')
+                if args.save_mode == 'local':
+                    torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
+                    torch.save(discriminador[tipo], os.path.expanduser('discriminador_' + tipo[1:] + '.pt'))
+                elif args.save_mode == 'nuvem':
+                    gerador[tipo].save_pretrained('https://huggingface.co/' + 'gerador_' + tipo[1:], use_auth_token=token)
+                    discriminador[tipo].save_pretrained('https://huggingface.co/' + 'discriminador_' + tipo[1:], use_auth_token=token)
+
+    if args.save_time == 'epoch':
+        if args.verbose == 'on':
+                    print('Salvando modelos')
+        if args.save_mode == 'local':
+            torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
+            torch.save(discriminador[tipo], os.path.expanduser('discriminador_' + tipo[1:] + '.pt'))
+        elif args.save_mode == 'nuvem':
+               gerador[tipo].save_pretrained('https://huggingface.co/' + 'gerador_' + tipo[1:], use_auth_token=token)
+               discriminador[tipo].save_pretrained('https://huggingface.co/' + 'discriminador_' + tipo[1:], use_auth_token=token)
+
+if args.save_time == 'session':
+    if args.verbose == 'on':
+        print('Salvando modelos')
+    if args.save_mode == 'local':
+        torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
+        torch.save(discriminador[tipo], os.path.expanduser('discriminador_' + tipo[1:] + '.pt'))
+     elif args.save_mode == 'nuvem':
+        gerador[tipo].save_pretrained('https://huggingface.co/' + 'gerador_' + tipo[1:], use_auth_token=token)
+        discriminador[tipo].save_pretrained('https://huggingface.co/' + 'discriminador_' + tipo[1:], use_auth_token=token)
