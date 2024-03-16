@@ -170,18 +170,22 @@ for tipo in types:
     if args.verbose == 'on':
         print("Formato dos textos reais:",textos_reais[tipo].shape)
         print("Formato dos textos falsos:", textos_falsos[tipo].shape)
-    # Padronizando o tamanho dos textos reais e falsos
+    if args.verbose == 'on':
+        print('Padronizando o tamanho dos textos reais e falsos')
     max_length = max(max([len(t) for t in textos_reais[tipo]]), max([len(t) for t in textos_falsos[tipo]]))
     textos_reais_pad = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t)))) for t in textos_reais[tipo]], batch_first=True)
     textos_falsos_pad = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t)))) for t in textos_falsos[tipo]], batch_first=True)
 
-    # Combinando os textos reais e os textos falsos
+    if args.verbose == 'on':
+        print(' Combinando os textos reais e os textos falsos')
     textos = torch.cat((textos_reais_pad, textos_falsos_pad), dim=0)
 
-    # Atribuir rótulos binários para cada texto
+    if args.verbose == 'on':
+       print('Atribuir rótulos binários para cada texto')
     rotulos = [1]*len(textos_reais[tipo]) + [0]*len(textos_falsos[tipo])
 
-    # Tokenizar e codificar os textos
+    if args.verbose == 'on':
+       print('Tokenizar e codificar os textos')
     #tokenized_textos = [encoder(decoder(texto,tipo), tipo) for texto in textos]
     textos = textos.to(torch.int64)
     tokenized_textos = []
