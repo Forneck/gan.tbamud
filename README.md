@@ -53,9 +53,10 @@ This script trains the GAN using the encoded texts. It requires a `fake.pt` file
   --help
                         Show the available argument list with its help. (Actually in Portuguese. TODO translate to English)
 
-### Note
+### Notes
 
-To use cloud saving edit your token on `gan.py`
+To use cloud saving edit your token on `gan.py`. Do not use `qst files` and `.qst` type.
+You must use `.` before the type on types.
 
 ## License
 

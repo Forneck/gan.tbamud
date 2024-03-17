@@ -16,7 +16,7 @@ timestamp = agora.strftime("%Y-%m-%d_%H-%M-%S")
 stats = f'session-stats_{timestamp}.json'
 pasta = os.path.expanduser('~/mud/gan/v1')
 # Tipos de arquivos que você quer gerar
-types = ['.mob']
+types = ['.mob','.shp']
 
 # Inicialize um dicionário para armazenar as estatísticas
 estatisticas = {
