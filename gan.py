@@ -76,7 +76,7 @@ class Discriminador(torch.nn.Module):
         self.embedding = torch.nn.Embedding(vocab_size, embedding_dim)
         self.lstm = torch.nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
         self.pooling = torch.nn.AdaptiveAvgPool1d(1)
-        self.classifier = torch.nn.Linear(hidden_dim, 1)
+        self.classifier = torch.nn.Linear(hidden_dim, 2)
         self.sigmoid = torch.nn.Sigmoid()
 
     def forward(self, input, hidden=None):
@@ -281,7 +281,7 @@ for epoca in range(num_epocas):
         for (textos, rotulos), textos_falsos in zip(train_loaders[tipo], loader_gerador):
             if args.verbose == 'on':
                 print('Obtendo os textos e os rótulos do lote / amostra')
-            rotulos = rotulos.view(-1,1)
+            #rotulos = rotulos.view(-1,1)
             if args.verbose == 'on':
                 print('Zerando a acurácia para a amostra')
             acuracia_discriminador, acuracia_gerador = 0, 0
@@ -302,9 +302,10 @@ for epoca in range(num_epocas):
             # Passando o texto falso para o discriminador
             saida_real, _ = discriminador[tipo](textos)
             saida_falso, _ = discriminador[tipo](textos_falsos)
-            rotulos = rotulos.float()
-            perda_real = criterio_discriminador(saida_real, rotulos)
-            perda_falso = criterio_discriminador(saida_falso, torch.zeros_like(rotulos))
+            rotulos_float = rotulos.float()
+            rotulos_reshaped = rotulos_float.view(-1, 1).repeat(1, 2)
+            perda_real = criterio_discriminador(saida_real, rotulos_reshaped)
+            perda_falso = criterio_discriminador(saida_falso, torch.zeros_like(rotulos_reshaped))
             perda_discriminador = (perda_real + perda_falso) / 2
             if args.verbose == 'on':
                 print('Atualizando os parâmetros do discriminador')
@@ -314,7 +315,11 @@ for epoca in range(num_epocas):
             saida_falso, _ = discriminador[tipo](textos_falsos)
             if args.verbose == 'on':
                 print('Calculando a perda do gerador, usando os textos falsos e os rótulos invertidos')
-            perda_gerador = criterio_gerador(saida_falso, torch.ones_like(rotulos))
+            rotulos_reshaped = torch.ones(saida_falso.size(0), dtype=torch.long)
+            rotulos_reshaped.view(-1)
+            print(f'Conteudo do rotulos_reshaped da saida falsa: {rotulos_reshaped}. Forma do rotulos_reshaped: {rotulos_reshaped.shape}')
+            saida_falso = torch.log_softmax(saida_falso, dim=-1)
+            perda_gerador = criterio_gerador(saida_falso,rotulos_reshaped)
             if args.verbose == 'on':
                 print('Atualizando os parâmetros do gerador')
             otimizador_gerador[tipo].zero_grad()
