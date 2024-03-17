@@ -46,7 +46,7 @@ parser.add_argument('--save_time', choices=['sample', 'epoch', 'session'], defau
 parser.add_argument('--num_epocas', type=int, default=1, help='Número de épocas para treinamento')
 parser.add_argument('--tamanho_lote', type=int, default=1, help='Tamanho do lote para treinamento')
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
-parser.add_argument('--noise_dim', type=limit_noise_dim, default=50, help='Dimensão do ruído para o gerador')
+parser.add_argument('--noise_dim', type=limit_noise_dim, default=100, help='Dimensão do ruído para o gerador')
 parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador') 
 parser.add_argument('--verbose', choices=['on', 'off'], default='off', help='Mais informações de saída')
 args = parser.parse_args()
@@ -290,10 +290,14 @@ for epoca in range(num_epocas):
             if args.verbose == 'on':
                 print(textos_falsos)
             #Obtendo o índice da palavra com a maior probabilidade
-            textos_falsos= torch.argmax(textos_falsos,dim=-1)
-            textos_falsos = textos_falsos.view(textos_falsos.size(0), -1)
             if args.verbose == 'on':
-                 print(textos_falsos)
+                 print('Saida Gerador: ',textos_falsos.shape)
+                 for amostra in textos_falsos:
+                        for ruido in amostra:
+                            falso = decoder(ruido.tolist(),tipo,numero_para_palavra)
+                            print('Texto falso gerado: ', falso) 
+            textos_falsos = textos_falsos.view(textos_falsos.size(0), -1)
+            print('Entrada do discriminador:  ', textos_falsos.shape)
             # Passando o texto falso para o discriminador
             saida_real, _ = discriminador[tipo](textos)
             saida_falso, _ = discriminador[tipo](textos_falsos)

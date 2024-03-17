@@ -4,6 +4,15 @@ import nltk
 import os
 import json
 
+# Definindo os parâmetros
+gerador_path = 'gerador_mob.pt'
+noise_dim = 100
+noise_samples = 1
+num_samples = 1
+tipo = '.mob'
+max_length = 253
+types= ['.mob']
+pasta = os.path.expanduser('~/mud/gan/v1')
 
 print('Definindo a arquitetura do modelo gerador')
 class Gerador(torch.nn.Module):
@@ -64,8 +73,6 @@ class GeneratorOutputDataset(Dataset):
     def __getitem__(self, idx):
         sample = torch.zeros((self.noise_samples, self.text_len), dtype=torch.long)
         noise = torch.randint(0, self.noise_dim, (self.noise_samples, self.noise_dim))
-        if args.verbose == 'on':
-            print('Noise: ', noise)
         text_chunk, _ = self.generator(noise)
         if self.text_len <= self.noise_dim:
             # Se o tamanho do texto for menor ou igual a noise_dim, use apenas a parte necessária do texto gerado
@@ -80,9 +87,6 @@ class GeneratorOutputDataset(Dataset):
                 start_index = (self.text_len // self.noise_dim) * self.noise_dim
                 sample[:, start_index:] = torch.argmax(text_chunk, dim=-1)[:, :self.text_len-start_index]
         return sample
-
-types= ['.mob']
-pasta = os.path.expanduser('~/mud/gan/v1')
 
 def carregar_vocabulario(pasta, types):
     palavra_para_numero = {}
@@ -109,35 +113,24 @@ def decoder(texto_codificado, tipo, numero_para_palavra):
 
 palavra_para_numero, numero_para_palavra,textos_reais = carregar_vocabulario(pasta, types)
 
-def gerar_texto_falso(gerador_path, noise_dim, num_samples,noise_samples, tipo):
-    # Carregando o modelo gerador
-    gerador = torch.load(gerador_path)
-    gerador.eval()
+# Carregando o modelo gerador
+gerador = torch.load(gerador_path)
+# Criando o dataset para as saídas do gerador
+dataset_gerador = GeneratorOutputDataset(gerador, noise_dim, num_samples, noise_samples,max_length)
+loader_gerador = DataLoader(dataset_gerador, batch_size=1, shuffle=True)
 
-    # Criando o dataset para as saídas do gerador
-    dataset_gerador = GeneratorOutputDataset(gerador[tipo], noise_dim, num_samples, noise_samples,max_length)
-    loader_gerador = DataLoader(dataset_gerador, batch_size=1, shuffle=True)
-
+def gerar_texto_falso(gerador, noise_dim, num_samples,noise_samples, tipo):
+ 
     # Gerando textos falsos
     with torch.no_grad():
-        for batch in loader_gerador:
-            texto_falso = batch
-            print('Formato de texto_falso:',texto_falso.shape)
-            # Obtendo o índice da palavra com a maior probabilidade
-            texto_falso_max = torch.argmax(texto_falso, dim=-1)
-            texto_falso_lista = texto_falso_max.tolist()
-            print('Formato depois do argmax:', texto_falso_max.shape)
-            #print(texto_falso_max)
-            #print('Formato da lista',texto_falso_lista)
-            print('Saida gerador: ', decoder(texto_falso_lista[0][0],tipo,numero_para_palavra))
-
-# Definindo os parâmetros
-gerador_path = 'gerador_mob.pt'
-noise_dim = 100
-noise_samples = 1
-num_samples = 1
-tipo = '.mob'
-max_lenght = 253
+        print(f'Colocando o modelo em modo de avaliação.')
+        gerador.eval()
+        for textos_falsos in loader_gerador:
+            print('Saida Gerador: ',textos_falsos.shape)
+            for amostra in textos_falsos:
+                for ruido in amostra:
+                    falso = decoder(ruido.tolist(),tipo,numero_para_palavra)
+                    print('Texto falso gerado: ', falso)
 
 # Gerando o texto falso
-gerar_texto_falso(gerador_path, noise_dim, num_samples, noise_samples, tipo)
+gerar_texto_falso(gerador, noise_dim, num_samples, noise_samples, tipo)
