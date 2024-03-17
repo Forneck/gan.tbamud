@@ -314,7 +314,7 @@ for epoca in range(num_epocas):
             saida_falso, _ = discriminador[tipo](textos_falsos)
             if args.verbose == 'on':
                 print('Calculando a perda do gerador, usando os textos falsos e os rótulos invertidos')
-            perda_gerador = criterio_discriminador(saida_falso, torch.ones_like(rotulos))
+            perda_gerador = criterio_gerador(saida_falso, torch.ones_like(rotulos))
             if args.verbose == 'on':
                 print('Atualizando os parâmetros do gerador')
             otimizador_gerador[tipo].zero_grad()
