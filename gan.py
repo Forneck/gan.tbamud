@@ -16,7 +16,7 @@ timestamp = agora.strftime("%Y-%m-%d_%H-%M-%S")
 stats = f'session-stats_{timestamp}.json'
 pasta = os.path.expanduser('~/mud/gan/v1')
 # Tipos de arquivos que você quer gerar
-types = ['.mob','.shp']
+types = ['.mob']
 
 # Inicialize um dicionário para armazenar as estatísticas
 estatisticas = {
@@ -46,7 +46,7 @@ parser.add_argument('--save_time', choices=['sample', 'epoch', 'session'], defau
 parser.add_argument('--num_epocas', type=int, default=1, help='Número de épocas para treinamento')
 parser.add_argument('--tamanho_lote', type=int, default=1, help='Tamanho do lote para treinamento')
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
-parser.add_argument('--noise_dim', type=limit_noise_dim, default=100, help='Dimensão do ruído para o gerador')
+parser.add_argument('--noise_dim', type=limit_noise_dim, default=50, help='Dimensão do ruído para o gerador')
 parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador') 
 parser.add_argument('--verbose', choices=['on', 'off'], default='off', help='Mais informações de saída')
 args = parser.parse_args()
@@ -99,21 +99,36 @@ class TextDataset(Dataset):
         return self.textos[idx], self.rotulos[idx]
 
 class GeneratorOutputDataset(Dataset):
-    def __init__(self, generator, noise_dim, num_samples,noise_samples):
+    def __init__(self, generator, noise_dim, num_samples, noise_samples, text_len):
         self.generator = generator
         self.noise_dim = noise_dim
         self.num_samples = num_samples
         self.noise_samples = noise_samples
+        self.text_len = text_len  # Adicione o tamanho do texto real aqui
 
     def __len__(self):
         return self.num_samples
 
     def __getitem__(self, idx):
-        noise = torch.randint(0, self.noise_dim, (self.noise_samples , self.noise_dim))
+        sample = torch.zeros((self.noise_samples, self.text_len), dtype=torch.long)
+        noise = torch.randint(0, self.noise_dim, (self.noise_samples, self.noise_dim))
         if args.verbose == 'on':
             print('Noise: ', noise)
-        sample, _ = self.generator(noise)
+        text_chunk, _ = self.generator(noise)
+        if self.text_len <= self.noise_dim:
+            # Se o tamanho do texto for menor ou igual a noise_dim, use apenas a parte necessária do texto gerado
+            sample[:, :self.text_len] = torch.argmax(text_chunk, dim=-1)[:, :self.text_len]
+        else:
+            # Se o tamanho do texto for maior que noise_dim, use o código anterior para gerar o texto em pedaços
+            for i in range(self.text_len // self.noise_dim):
+                sample[:, i*self.noise_dim:(i+1)*self.noise_dim] = torch.argmax(text_chunk, dim=-1)
+            if self.text_len % self.noise_dim != 0:
+                noise = torch.randint(0, self.noise_dim, (self.noise_samples, self.noise_dim))
+                text_chunk, _ = self.generator(noise)
+                start_index = (self.text_len // self.noise_dim) * self.noise_dim
+                sample[:, start_index:] = torch.argmax(text_chunk, dim=-1)[:, :self.text_len-start_index]
         return sample
+
 
 if args.verbose == 'on':
     print('Definindo o Encoder')
@@ -150,8 +165,8 @@ if args.verbose == 'on':
     print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
 tamanho_lote = 1 #args.tamanho_lote 
-taxa_aprendizado_discriminador = 0.0001 #inicial 0.001 aprendia rapido demais
-taxa_aprendizado_gerador = 0.01 #inicial 0.0001 aprendia devagar demais
+taxa_aprendizado_discriminador = 0.0001 #era 0.001 mas aprendia muito rapido
+taxa_aprendizado_gerador = 0.01 #era 0.0001 mas demorava para aprender
 noise_dim = args.noise_dim # entre 1 e 100
 noise_samples = args.noise_samples #numero de amostras de ruído
 num_samples = args.num_samples #numero de amostras dentro da mesma época
@@ -248,7 +263,7 @@ for tipo in types:
     otimizador_gerador[tipo] = torch.optim.Adam(gerador[tipo].parameters(), lr=taxa_aprendizado_gerador)
 
 # Criando o dataset para as saídas do gerador
-dataset_gerador = GeneratorOutputDataset(gerador[tipo], noise_dim, num_samples, noise_samples)
+dataset_gerador = GeneratorOutputDataset(gerador[tipo], noise_dim, num_samples, noise_samples,max_length)
 loader_gerador = DataLoader(dataset_gerador, batch_size=tamanho_lote, shuffle=True)
 
 # Treinando os modelos gerador e discriminador alternadamente
