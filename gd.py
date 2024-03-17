@@ -60,19 +60,34 @@ class TextDataset(Dataset):
         return self.textos[idx], self.rotulos[idx]
 
 class GeneratorOutputDataset(Dataset):
-    def __init__(self, generator, noise_dim, num_samples,noise_samples):
+    def __init__(self, generator, noise_dim, num_samples, noise_samples, text_len):
         self.generator = generator
         self.noise_dim = noise_dim
         self.num_samples = num_samples
         self.noise_samples = noise_samples
+        self.text_len = text_len  # Adicione o tamanho do texto real aqui
 
     def __len__(self):
         return self.num_samples
 
     def __getitem__(self, idx):
-        noise = torch.randint(0, self.noise_dim, (self.noise_samples , self.noise_dim))
-        #print('Noise:' ,noise)
-        sample, _ = self.generator(noise)
+        sample = torch.zeros((self.noise_samples, self.text_len), dtype=torch.long)
+        noise = torch.randint(0, self.noise_dim, (self.noise_samples, self.noise_dim))
+        if args.verbose == 'on':
+            print('Noise: ', noise)
+        text_chunk, _ = self.generator(noise)
+        if self.text_len <= self.noise_dim:
+            # Se o tamanho do texto for menor ou igual a noise_dim, use apenas a parte necessária do texto gerado
+            sample[:, :self.text_len] = torch.argmax(text_chunk, dim=-1)[:, :self.text_len]
+        else:
+            # Se o tamanho do texto for maior que noise_dim, use o código anterior para gerar o texto em pedaços
+            for i in range(self.text_len // self.noise_dim):
+                sample[:, i*self.noise_dim:(i+1)*self.noise_dim] = torch.argmax(text_chunk, dim=-1)
+            if self.text_len % self.noise_dim != 0:
+                noise = torch.randint(0, self.noise_dim, (self.noise_samples, self.noise_dim))
+                text_chunk, _ = self.generator(noise)
+                start_index = (self.text_len // self.noise_dim) * self.noise_dim
+                sample[:, start_index:] = torch.argmax(text_chunk, dim=-1)[:, :self.text_len-start_index]
         return sample
 
 types= ['.mob']
@@ -152,7 +167,7 @@ valid_loaders = DataLoader(valid_dataset, batch_size=tamanho_lote)
 test_loaders  = DataLoader(test_dataset, batch_size=tamanho_lote)
 
 # Criando o dataset para as saídas do gerador
-dataset_gerador = GeneratorOutputDataset(gerador, noise_dim, num_samples, noise_samples)
+dataset_gerador = GeneratorOutputDataset(gerador, noise_dim, num_samples, noise_samples,max_length)
 loader_gerador = DataLoader(dataset_gerador, batch_size=tamanho_lote, shuffle=True)
 
 acuracia_discriminador, acuracia_gerador = 0, 0
