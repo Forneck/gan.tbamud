@@ -297,7 +297,8 @@ for epoca in range(num_epocas):
                             falso = decoder(ruido.tolist(),tipo,numero_para_palavra)
                             print('Texto falso gerado: ', falso) 
             textos_falsos = textos_falsos.view(textos_falsos.size(0), -1)
-            print('Entrada do discriminador:  ', textos_falsos.shape)
+            if args.verbose == 'on':
+                print('Entrada do discriminador:  ', textos_falsos.shape)
             # Passando o texto falso para o discriminador
             saida_real, _ = discriminador[tipo](textos)
             saida_falso, _ = discriminador[tipo](textos_falsos)
