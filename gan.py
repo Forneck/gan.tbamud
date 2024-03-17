@@ -46,7 +46,7 @@ parser.add_argument('--save_time', choices=['sample', 'epoch', 'session'], defau
 parser.add_argument('--num_epocas', type=int, default=1, help='Número de épocas para treinamento')
 parser.add_argument('--tamanho_lote', type=int, default=1, help='Tamanho do lote para treinamento')
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
-parser.add_argument('--noise_dim', type=limit_noise_dim, default=50, help='Dimensão do ruído para o gerador')
+parser.add_argument('--noise_dim', type=limit_noise_dim, default=100, help='Dimensão do ruído para o gerador')
 parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador') 
 parser.add_argument('--verbose', choices=['on', 'off'], default='off', help='Mais informações de saída')
 args = parser.parse_args()
@@ -150,8 +150,8 @@ if args.verbose == 'on':
     print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
 tamanho_lote = 1 #args.tamanho_lote 
-taxa_aprendizado_discriminador = 0.0001
-taxa_aprendizado_gerador = 0.001
+taxa_aprendizado_discriminador = 0.0001 #inicial 0.001 aprendia rapido demais
+taxa_aprendizado_gerador = 0.01 #inicial 0.0001 aprendia devagar demais
 noise_dim = args.noise_dim # entre 1 e 100
 noise_samples = args.noise_samples #numero de amostras de ruído
 num_samples = args.num_samples #numero de amostras dentro da mesma época
