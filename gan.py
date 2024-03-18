@@ -228,6 +228,7 @@ for tipo in types:
     if args.verbose == 'on':
         print('Padronizando o tamanho dos textos reais e falsos')
     max_length = max(max([len(t) for t in textos_reais[tipo]]), max([len(t) for t in textos_falsos[tipo]]))
+    min_length = min([len(t) for t in textos_reais[tipo]])
     textos_reais_pad = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t)))) for t in textos_reais[tipo]], batch_first=True)
     textos_falsos_pad = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t)))) for t in textos_falsos[tipo]], batch_first=True)
 
@@ -303,7 +304,7 @@ for tipo in types:
     otimizador_gerador[tipo] = torch.optim.Adam(gerador[tipo].parameters(), lr=taxa_aprendizado_gerador)
 
 # Criando o dataset para as saídas do gerador
-dataset_gerador = GeneratorOutputDataset(gerador[tipo], noise_dim, num_samples, noise_samples,max_length)
+dataset_gerador = GeneratorOutputDataset(gerador[tipo], noise_dim, num_samples, noise_samples,max_length,min_length)
 loader_gerador = DataLoader(dataset_gerador, batch_size=tamanho_lote, shuffle=True)
 
 # Treinando os modelos gerador e discriminador alternadamente
