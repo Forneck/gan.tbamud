@@ -317,7 +317,6 @@ for epoca in range(num_epocas):
                 print('Calculando a perda do gerador, usando os textos falsos e os rótulos invertidos')
             rotulos_reshaped = torch.ones(saida_falso.size(0), dtype=torch.long)
             rotulos_reshaped.view(-1)
-            print(f'Conteudo do rotulos_reshaped da saida falsa: {rotulos_reshaped}. Forma do rotulos_reshaped: {rotulos_reshaped.shape}')
             saida_falso = torch.log_softmax(saida_falso, dim=-1)
             perda_gerador = criterio_gerador(saida_falso,rotulos_reshaped)
             if args.verbose == 'on':
