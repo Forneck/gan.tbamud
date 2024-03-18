@@ -229,6 +229,8 @@ for tipo in types:
         print('Padronizando o tamanho dos textos reais e falsos')
     max_length = max(max([len(t) for t in textos_reais[tipo]]), max([len(t) for t in textos_falsos[tipo]]))
     min_length = min(len(t.rstrip('\x00')) for t in textos_reais[tipo])
+    if args.verbose == 'on':
+        print(f'Min leght for real text: {min_length}')
     textos_reais_pad = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t)))) for t in textos_reais[tipo]], batch_first=True)
     textos_falsos_pad = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t)))) for t in textos_falsos[tipo]], batch_first=True)
 
