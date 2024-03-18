@@ -99,6 +99,46 @@ class TextDataset(Dataset):
         return self.textos[idx], self.rotulos[idx]
 
 class GeneratorOutputDataset(Dataset):
+    def __init__(self, generator, noise_dim, num_samples, noise_samples, text_len, min_text_len):
+        self.generator = generator
+        self.noise_dim = noise_dim
+        self.num_samples = num_samples
+        self.noise_samples = noise_samples
+        self.text_len = text_len
+        self.min_text_len = min_text_len  # Tamanho mínimo do texto real
+
+    def __len__(self):
+        return self.num_samples
+
+    def __getitem__(self, idx):
+        sample = torch.zeros((self.noise_samples, self.text_len), dtype=torch.long)
+        noise = torch.randint(0, self.noise_dim, (self.noise_samples, self.noise_dim))
+        if args.verbose == 'on':
+            print('Noise: ', noise)
+        text_chunk, _ = self.generator(noise)
+
+        # Calcula o tamanho aleatório do texto
+        random_text_len = torch.randint(self.min_text_len, self.text_len + 1, (self.noise_samples,))
+
+        if self.text_len <= self.noise_dim:
+            # Se o tamanho do texto for menor ou igual a noise_dim, use apenas a parte necessária do texto gerado
+            sample[:, :self.text_len] = torch.argmax(text_chunk, dim=-1)[:, :self.text_len]
+        else:
+            # Se o tamanho do texto for maior que noise_dim, use o código anterior para gerar o texto em pedaços
+            for i in range(self.text_len // self.noise_dim):
+                sample[:, i*self.noise_dim:(i+1)*self.noise_dim] = torch.argmax(text_chunk, dim=-1)
+            if self.text_len % self.noise_dim != 0:
+                noise = torch.randint(0, self.noise_dim, (self.noise_samples, self.noise_dim))
+                text_chunk, _ = self.generator(noise)
+                start_index = (self.text_len // self.noise_dim) * self.noise_dim
+                sample[:, start_index:] = torch.argmax(text_chunk, dim=-1)[:, :self.text_len-start_index]
+
+        # Ajusta o tamanho do texto para o tamanho aleatório
+        sample = sample[:, :random_text_len.max()]
+
+        return sample
+
+class GeneratorOutputDatasetV0(Dataset):
     def __init__(self, generator, noise_dim, num_samples, noise_samples, text_len):
         self.generator = generator
         self.noise_dim = noise_dim
