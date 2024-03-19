@@ -11,7 +11,7 @@ import random
 from torch.nn.utils.rnn import pad_sequence
 
 pasta = os.path.expanduser('~/mud/gan/v1/')
-types = ['.mob', '.obj', '.wld', '.zon', '.shp', '.trg', '.qst']
+types = ['.mob']
 textos_falsos = {}
 def carregar_vocabulario(pasta, types):
     palavra_para_numero = {}
@@ -38,11 +38,18 @@ for tipo in types:
     random_list = []
     fake = 'fake_' + tipo[1:] + '.pt'
     textos_falsos = []  # Inicialize textos_falsos fora do loop
+    textos_unpad = []
+    for texto in textos_reais[tipo]:
+             texto = texto.tolist()
+             while texto[-1] == 0:
+                 texto.pop()
+             textos_unpad.append(texto)
+    min_length = min(len(texto) for texto in textos_unpad)
     for i in range(len(textos_reais[tipo])):
         random_list = []  # Inicialize random_list dentro do loop
         porcentagem = (i/len(textos_reais[tipo]))*100
         print(f'Gerando texto falso {i} de {len(textos_reais[tipo])} ({porcentagem:.4f}%)')
-        for _ in range(random.randint(50,max([len(t) for t in textos_reais[tipo]]))):
+        for _ in range(random.randint(min_length,max([len(t) for t in textos_reais[tipo]]))):
             random_number = random.randint(0, len(palavra_para_numero[tipo]) - 1)
             random_list.append(random_number) 
         random_list = torch.tensor(random_list, dtype=torch.float32)
