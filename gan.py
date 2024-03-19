@@ -232,11 +232,9 @@ for tipo in types:
     textos_unpad = []
     for texto in textos_reais[tipo]:
          texto = texto.tolist()
-        # Removendo os zeros de preenchimento à direita
-        while texto[-1] == 0:
+         while texto[-1] == 0:
             texto.pop()
-    # Adicionando o texto sem padding à lista
-        textos_unpad.append(texto)
+         textos_unpad.append(texto)
  
     min_length = min(len(texto) for texto in textos_unpad)
     if args.verbose == 'on':
@@ -352,6 +350,10 @@ for epoca in range(num_epocas):
             textos_falsos = textos_falsos.view(textos_falsos.size(0), -1)
             if args.verbose == 'on':
                 print('Entrada do discriminador:  ', textos_falsos.shape)
+            # Verifica se o tamanho dos textos falsos é menor que max_length
+            if len(textos_falsos) < max_length:
+            # Preenche os textos falsos com zeros à direita para atingir o tamanho máximo
+                textos_falsos = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t), dtype=torch.int64))) for t in textos_falsos], batch_first=True)
             # Passando o texto falso para o discriminador
             saida_real, _ = discriminador[tipo](textos)
             saida_falso, _ = discriminador[tipo](textos_falsos)
