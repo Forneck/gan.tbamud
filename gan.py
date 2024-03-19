@@ -228,7 +228,17 @@ for tipo in types:
     if args.verbose == 'on':
         print('Padronizando o tamanho dos textos reais e falsos')
     max_length = max(max([len(t) for t in textos_reais[tipo]]), max([len(t) for t in textos_falsos[tipo]]))
-    min_length = min(len(t.rstrip('\x00')) for t in textos_reais[tipo])
+# Criando uma lista vazia para os textos reais sem padding
+    textos_unpad = []
+    for texto in textos_reais[tipo]:
+         texto = texto.tolist()
+        # Removendo os zeros de preenchimento à direita
+        while texto[-1] == 0:
+            texto.pop()
+    # Adicionando o texto sem padding à lista
+        textos_unpad.append(texto)
+ 
+    min_length = min(len(texto) for texto in textos_unpad)
     if args.verbose == 'on':
         print(f'Min leght for real text: {min_length}')
     textos_reais_pad = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t)))) for t in textos_reais[tipo]], batch_first=True)
