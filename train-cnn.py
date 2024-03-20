@@ -215,7 +215,7 @@ for epoca in range(num_epocas):
             otimizador_cnn[tipo].step()
             saida_real = cnn[tipo](textos)
             if args.verbose == 'cnn' or args.verbose == 'on':
-                print(f'Saida da cnn com textos de treinamento {saida_real}')
+                print(f'Saida da cnn atualizada {saida_real}')
             if args.verbose == 'on':
                 print('Calculando a acurácia do cnn')
             acuracia_cnn += ((saida_real > 0.5) == rotulos).float().mean()
