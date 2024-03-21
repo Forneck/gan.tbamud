@@ -13,6 +13,7 @@ from torch.utils.data import Dataset, DataLoader
 
 agora = datetime.datetime.now()
 timestamp = agora.strftime("%Y-%m-%d_%H-%M-%S")
+print(f'Inicio da sessão: {timestamp}')
 stats = f'session-gcd_{timestamp}.json'
 pasta = os.path.expanduser('~/mud/gan/v1')
 # Tipos de arquivos que você quer gerar
@@ -79,14 +80,14 @@ class Discriminador(torch.nn.Module):
         self.lstm = torch.nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
         self.pooling = torch.nn.AdaptiveAvgPool1d(1)
         self.classifier = torch.nn.Linear(hidden_dim, 2)
-        self.sigmoid = torch.nn.Sigmoid()
+        self.log_softmax = torch.nn.LogSoftmax(dim=1)
 
     def forward(self, input, hidden=None):
         embedded = self.embedding(input)
         output, hidden = self.lstm(embedded, hidden)
         output = self.pooling(output.transpose(1, 2)).squeeze(2)
         output = self.classifier(output)
-        output = self.sigmoid(output)
+        output = self.log_softmax(output)
         return output, hidden
 
 if args.verbose == 'on' or args.verbose == 'cnn':
@@ -343,8 +344,7 @@ for epoca in range(num_epocas):
            if args.verbose == 'on':
               print('Obtendo os textos e os rótulos do lote / amostra')
               print(f'Texto codificado de treinamento: {textos} e o rótulo: {rotulos}')
-           if args.verbose == 'cnn':
-              print(f'Rotulo do texto de treinamento: {rotulos}')
+           print(f'Rotulo do texto de treinamento: {rotulos}')
            if args.verbose == 'on':
               print('Zerando a acurácia para a amostra')
            acuracia_discriminador, acuracia_gerador, acuracia_cnn = 0, 0, 0
@@ -353,7 +353,10 @@ for epoca in range(num_epocas):
            textos_falsos = textos_falsos.view(textos_falsos.size(0), -1)
            cnn_ok = 0
            #Passando o texto falso para o cnn
-           
+           # Verifica se o tamanho dos textos falsos é menor que max_length
+           if len(textos_falsos) < max_length:
+               # Preenche os textos falsos com zeros à direita para atingir o tamanho máximo
+               textos_falsos = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t), dtype=torch.int64))) for t in textos_falsos], batch_first=True)
            saida_real = cnn[tipo](textos)
            saida_falso = cnn[tipo](textos_falsos)
            if args.verbose == 'on' or args.verbose == 'cnn':
@@ -375,8 +378,8 @@ for epoca in range(num_epocas):
                   print('Calculando a perda do gerador, usando os textos falsos e os rótulos invertidos')
            rotulos_reshaped = torch.ones(saida_falso.size(0), dtype=torch.long)
            rotulos_reshaped.view(-1)
-           saida_falso = torch.log_softmax(saida_falso, dim=-1)
-           perda_gerador = criterio_gerador(saida_falso,rotulos_reshaped)
+           saida_falso_log = torch.log_softmax(saida_falso, dim=-1)
+           perda_gerador = criterio_gerador(saida_falso_log,rotulos_reshaped)
            if args.verbose == 'on':
                   print('Atualizando os parâmetros do gerador')
            otimizador_gerador[tipo].zero_grad()
@@ -384,15 +387,15 @@ for epoca in range(num_epocas):
            otimizador_gerador[tipo].step()
            if args.verbose == 'on' or args.verbose == 'cnn':
                   print('Calculando a acurácia do cnn e do gerador')
-           acuracia_cnn += ((saida_real > 0.5) == rotulos).float().mean()
-           acuracia_cnn += ((saida_falso < 0.5) == torch.zeros_like(rotulos)).float().mean()
+           acuracia_cnn += ((saida_real[:,0] > 0.5) == torch.ones_like(rotulos)).float().mean()
+           acuracia_cnn += ((saida_falso[:,1] > 0.5) == torch.zeros_like(rotulos)).float().mean()
            acuracia_gerador += ((saida_falso[:, 0] > 0.5) == torch.ones_like(rotulos)).float().mean()
            cnn_ok = acuracia_gerador
-           print(f'Tipo {tipo}, Epoca {epoca + 1} de {num_epocas}, Perda cnn {perda_cnn.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia cnn {acuracia_cnn.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
+           if args.verbose == 'on' or args.verbose == 'cnn':
+              print(f'Tipo {tipo}, Epoca {epoca + 1} de {num_epocas}, Perda cnn {perda_cnn.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia cnn {acuracia_cnn.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
            if args.verbose == 'on' and cnn_ok == 0:
                print('Texto passou pela Cnn e não obteve o ok')
            tentativa = 0
-           saida_cnn = saida_falso
            while acuracia_gerador == 0 and tentativa < max_tentativas:
                   tentativa=tentativa+1
                   print(f'Tentativa {tentativa} de repassar o texto pelo gerador')
@@ -400,30 +403,39 @@ for epoca in range(num_epocas):
                      texto_falso = torch.argmax(textos_falsos, dim=-1).unsqueeze(-1)
                   else:
                      texto_falso = torch.argmax(texto_falso, dim=-1).unsqueeze(-1)
-                  if len(texto_falso) < max_length:
-                     texto_falso = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t), dtype=torch.int64))) for t in texto_falso], batch_first=True)
                   texto_falso ,_ = gerador[tipo](texto_falso)
                   texto_falso = torch.argmax(texto_falso, dim=2)
-                  saida_cnn = torch.exp(saida_cnn)
                   saida_cnn = cnn[tipo](texto_falso)
                   if args.verbose == 'on' or args.verbose == 'cnn':
                      print(f'Saida da Cnn para esta tentativa: {saida_cnn}')
+                  acuracia_cnn += ((saida_real[:,0] > 0.5) == torch.ones_like(rotulos)).float().mean()
+                  acuracia_cnn += ((saida_falso[:,1] > 0.5) == torch.zeros_like(rotulos)).float().mean()
                   acuracia_gerador += ((saida_cnn[:, 0] > 0.5) == torch.ones_like(rotulos)).float().mean()
-                  saida_cnn = torch.log_softmax(saida_cnn, dim=-1) #revertendo para log_softmax para calcular a perda     
-                  perda_gerador = criterio_gerador(saida_cnn,rotulos_reshaped)
+                  saida_cnn_log = torch.log_softmax(saida_cnn, dim=-1) #revertendo para log_softmax para calcular a perda     
+                  perda_gerador = criterio_gerador(saida_cnn_log,rotulos_reshaped)
                   otimizador_gerador[tipo].zero_grad()
                   perda_gerador.backward()
                   otimizador_gerador[tipo].step()
                   cnn_ok = acuracia_gerador
-                  print(f'Texto novo analisado pela cnn: {texto_falso}')
-                  print(f'Tentativa: {tentativa}, Perda cnn {perda_cnn.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia cnn {acuracia_cnn.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
+                  if args.verbose == 'on':
+                     print(f'Texto novo analisado pela cnn: {texto_falso}')
+                  if args.verbose == 'on' or args.verbose == 'cnn':
+                     print(f'Tentativa: {tentativa}, Perda cnn {perda_cnn.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia cnn {acuracia_cnn.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
            #Cnn deu ok, continuando do while.
            if cnn_ok > 0:
                print('Cnn deu ok. Passando pelo discriminador')
-               textos_falsos = texto_falso
+               if tentativa > 0:
+                  textos_falsos = texto_falso
                #Passando o texto falso para o discriminador
+               if len(textos_falsos) < max_length:
+                  #Preenche os textos falsos com zeros à direita para atingir o tamanho máximo
+                  textos_falsos = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t), dtype=torch.int64))) for t in textos_falsos], batch_first=True)
                saida_real, _ = discriminador[tipo](textos)
                saida_falso, _ = discriminador[tipo](textos_falsos)
+               saida_real = torch.exp(saida_real)
+               saida_falso = torch.exp(saida_falso)
+               print(f'Saida do discriminador para texto de treinamento: {saida_real}')
+               print(f'Saida do discriminador para texto gerado: {saida_falso}')
                rotulos_float = rotulos.float()
                rotulos_reshaped = rotulos_float.view(-1, 1).repeat(1, 2)
                perda_real = criterio_discriminador(saida_real, rotulos_reshaped)
@@ -439,9 +451,8 @@ for epoca in range(num_epocas):
                   print('Calculando a perda do gerador, usando os textos falsos e os rótulos invertidos')
                rotulos_reshaped = torch.ones(saida_falso.size(0), dtype=torch.long)
                rotulos_reshaped.view(-1)
-               if args.verbose == 'on':
-                  print(f'Saida do discriminador: {saida_falso}')
-               saida_falso = torch.log_softmax(saida_falso, dim=-1)
+               prob_gerado=torch.exp(saida_falso)
+               print(f'Saida do discriminador para texto gerado após otimização: {prob_gerado}')
                perda_gerador = criterio_gerador(saida_falso,rotulos_reshaped)
                if args.verbose == 'on':
                   print('Atualizando os parâmetros do gerador')
@@ -450,15 +461,15 @@ for epoca in range(num_epocas):
                otimizador_gerador[tipo].step()
                if args.verbose == 'on':
                   print('Calculando a acurácia do discriminador e do gerador')
-               acuracia_discriminador += ((saida_real > 0.5) == rotulos).float().mean()
-               acuracia_discriminador += ((saida_falso < 0.5) == torch.zeros_like(rotulos)).float().mean()
-               acuracia_gerador += ((saida_falso > 0.5) == torch.ones_like(rotulos)).float().mean()
+               acuracia_discriminador += ((saida_real[:,0] > 0.5) == torch.ones_like(rotulos)).float().mean()
+               acuracia_discriminador += ((prob_gerado[:1]  > 0.5) == torch.zeros_like(rotulos)).float().mean()
+               acuracia_gerador += ((prob_gerado[:,0] > 0.5) == torch.ones_like(rotulos)).float().mean()
                #Imprimindo as perdas e as acurácias
                print(f'Tipo {tipo}, Epoca {epoca + 1} de {num_epocas}, Perda Discriminador {perda_discriminador.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia Discriminador {acuracia_discriminador.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
            else:
-               print('Cnn ainda não deu o ok.')
-           print(f'Formato da saida: {textos_falsos.shape}')
-           if acuracia_gerador > 0:
+               print('Cnn ainda não deu o ok. Evitando discriminador e indo para proxima amostra/epoca se houver.')
+           #acuracia_gerador: 0 não enganou nada, 1 enganou cnn, 2 enganou cnn e discriminador
+           if acuracia_gerador > 1:
                output = decoder(textos_falsos[0].tolist(),tipo,numero_para_palavra)
                print(f'Texto final: {output}')
            if args.save_time == 'samples':
