@@ -288,9 +288,11 @@ for epoca in range(num_epocas):
         if args.verbose == 'on':
             print('Percorrendo cada lote de dados')
         for (textos, rotulos), textos_falsos in zip(train_loaders[tipo], loader_gerador):
-            if args.verbose == 'cnn':
+            if args.verbose == 'on':
                 print('Obtendo os textos e os rótulos do lote / amostra')
                 print(f'Texto treinamento: {textos} e o rótulo: {rotulos}')
+            if args.verbose == 'cnn':
+                print(f'Rotulo do texto de treinamento: {rotulos}')
             #rotulos = rotulos.view(-1,1)
             if args.verbose == 'on':
                 print('Zerando a acurácia para a amostra')
@@ -316,7 +318,7 @@ for epoca in range(num_epocas):
             # Passando o texto falso para o cnn
             saida_real = cnn[tipo](textos)
             saida_falso = cnn[tipo](textos_falsos)
-            if args.verbose == 'cnn' or args.verbose == 'on':
+            if args.verbose == 'on' or args.verbose == 'cnn':
                 print(f'Saida da cnn com textos de treinamento {saida_real} e gerados {saida_falso}')
             rotulos_float = rotulos.float()
             rotulos_reshaped = rotulos_float.view(-1, 1).repeat(1, 2)
@@ -351,7 +353,7 @@ for epoca in range(num_epocas):
             print(f'Tipo {tipo}, Epoca {epoca + 1} de {num_epocas}, Perda cnn {perda_cnn.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia cnn {acuracia_cnn.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
             tentativa = 0
             saida_cnn = saida_falso
-            while acuracia_gerador == 0 and tentativa < 2:
+            while acuracia_gerador == 0 and tentativa < 100:
               tentativa=tentativa+1
               print(f'Tentativa {tentativa} de repassar o texto pelo gerador')
               if tentativa == 1:
