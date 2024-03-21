@@ -292,6 +292,7 @@ for tipo in types:
 
     # Caminhos dos modelos
     gerador_path = os.path.expanduser('gerador_' + tipo[1:] + '.pt')
+    cnn_path = os.path.expanduser('cnn_' + tipo[1:] + '.pt')
     discriminador_path = os.path.expanduser('discriminador_' + tipo[1:] + '.pt')
 
     print('Verificando se o gerador existe para o tipo: ', tipo[1:])
