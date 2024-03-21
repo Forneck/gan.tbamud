@@ -44,7 +44,7 @@ def limit_noise_dim(value):
 # Definindo o argumento para escolher entre salvar localmente ou na nuvem
 parser = argparse.ArgumentParser()
 parser.add_argument('--save_mode', choices=['local', 'nuvem'], default='local', help='Escolha onde salvar o modelo')
-parser.add_argument('--save_time', choices=['sample', 'epoch', 'session'], default='sample', help='Escolha quando salvar o modelo')
+parser.add_argument('--save_time', choices=['epoch', 'session'], default='epoch', help='Escolha quando salvar o modelo')
 parser.add_argument('--num_epocas', type=int, default=1, help='Número de épocas para treinamento')
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
 parser.add_argument('--noise_dim', type=limit_noise_dim, default=100, help='Dimensão do ruído para o gerador')
@@ -349,55 +349,51 @@ for epoca in range(num_epocas):
               print('Zerando a acurácia para a amostra')
            acuracia_discriminador, acuracia_gerador, acuracia_cnn = 0, 0, 0
            if args.verbose == 'on':
-              print('Calculando a perda do discriminador, usando os textos reais e os textos falsos')
-           if args.verbose == 'on':
-              for amostra in textos_falsos:
-                  for ruido in amostra:
-                      falso = decoder(ruido.tolist(),tipo,numero_para_palavra)
-                      print('Texto falso gerado: ', falso) 
+              print('Calculando a perda da cnn, usando os textos reais e os textos falsos')
            textos_falsos = textos_falsos.view(textos_falsos.size(0), -1)
            cnn_ok = 0
            #Passando o texto falso para o cnn
-           while cnn_ok == 0:
-               saida_real = cnn[tipo](textos)
-               saida_falso = cnn[tipo](textos_falsos)
-               if args.verbose == 'on' or args.verbose == 'cnn':
-                  print(f'Saida da cnn com textos de treinamento {saida_real} e gerados {saida_falso}')
-               rotulos_float = rotulos.float()
-               rotulos_reshaped = rotulos_float.view(-1, 1).repeat(1, 2)
-               perda_real = criterio_cnn(saida_real, rotulos_reshaped)
-               perda_falso = criterio_cnn(saida_falso, torch.zeros_like(rotulos_reshaped))
-               perda_cnn = (perda_real + perda_falso) / 2
-               if args.verbose == 'on':
-                  print('Atualizando os parâmetros do cnn')
-               otimizador_cnn[tipo].zero_grad()
-               perda_cnn.backward()
-               otimizador_cnn[tipo].step()
-               saida_falso = cnn[tipo](textos_falsos)
-               if args.verbose == 'on' or args.verbose == 'cnn':
+           
+           saida_real = cnn[tipo](textos)
+           saida_falso = cnn[tipo](textos_falsos)
+           if args.verbose == 'on' or args.verbose == 'cnn':
+              print(f'Saida da cnn com textos de treinamento {saida_real} e gerados {saida_falso}')
+           rotulos_float = rotulos.float()
+           rotulos_reshaped = rotulos_float.view(-1, 1).repeat(1, 2)
+           perda_real = criterio_cnn(saida_real, rotulos_reshaped)
+           perda_falso = criterio_cnn(saida_falso, torch.zeros_like(rotulos_reshaped))
+           perda_cnn = (perda_real + perda_falso) / 2
+           if args.verbose == 'on':
+               print('Atualizando os parâmetros do cnn')
+           otimizador_cnn[tipo].zero_grad()
+           perda_cnn.backward()
+           otimizador_cnn[tipo].step()
+           saida_falso = cnn[tipo](textos_falsos)
+           if args.verbose == 'on' or args.verbose == 'cnn':
                   print(f'Saida da cnn com textos falsos apos otimização: {saida_falso}')
-               if args.verbose == 'on':
+           if args.verbose == 'on':
                   print('Calculando a perda do gerador, usando os textos falsos e os rótulos invertidos')
-               rotulos_reshaped = torch.ones(saida_falso.size(0), dtype=torch.long)
-               rotulos_reshaped.view(-1)
-               saida_falso = torch.log_softmax(saida_falso, dim=-1)
-               perda_gerador = criterio_gerador(saida_falso,rotulos_reshaped)
-               if args.verbose == 'on':
+           rotulos_reshaped = torch.ones(saida_falso.size(0), dtype=torch.long)
+           rotulos_reshaped.view(-1)
+           saida_falso = torch.log_softmax(saida_falso, dim=-1)
+           perda_gerador = criterio_gerador(saida_falso,rotulos_reshaped)
+           if args.verbose == 'on':
                   print('Atualizando os parâmetros do gerador')
-               otimizador_gerador[tipo].zero_grad()
-               perda_gerador.backward()
-               otimizador_gerador[tipo].step()
-               if args.verbose == 'on' or args.verbose == 'cnn':
+           otimizador_gerador[tipo].zero_grad()
+           perda_gerador.backward()
+           otimizador_gerador[tipo].step()
+           if args.verbose == 'on' or args.verbose == 'cnn':
                   print('Calculando a acurácia do cnn e do gerador')
-               acuracia_cnn += ((saida_real > 0.5) == rotulos).float().mean()
-               acuracia_cnn += ((saida_falso < 0.5) == torch.zeros_like(rotulos)).float().mean()
-               acuracia_gerador += ((saida_cnn[:, 0] > 0.5) == torch.ones_like(rotulos)).float().mean()
-               cnn_ok = acuracia_gerador
-               print(f'Tipo {tipo}, Epoca {epoca + 1} de {num_epocas}, Perda cnn {perda_cnn.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia cnn {acuracia_cnn.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
-               if args.verbose == 'on' and cnn_ok == 0:
-                  print('Texto passou pela Cnn e não obteve o ok')
-               tentativa = 0
-               while acuracia_gerador == 0 and tentativa < max_tentativas:
+           acuracia_cnn += ((saida_real > 0.5) == rotulos).float().mean()
+           acuracia_cnn += ((saida_falso < 0.5) == torch.zeros_like(rotulos)).float().mean()
+           acuracia_gerador += ((saida_falso[:, 0] > 0.5) == torch.ones_like(rotulos)).float().mean()
+           cnn_ok = acuracia_gerador
+           print(f'Tipo {tipo}, Epoca {epoca + 1} de {num_epocas}, Perda cnn {perda_cnn.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia cnn {acuracia_cnn.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
+           if args.verbose == 'on' and cnn_ok == 0:
+               print('Texto passou pela Cnn e não obteve o ok')
+           tentativa = 0
+           saida_cnn = saida_falso
+           while acuracia_gerador == 0 and tentativa < max_tentativas:
                   tentativa=tentativa+1
                   print(f'Tentativa {tentativa} de repassar o texto pelo gerador')
                   if tentativa == 1:
@@ -421,8 +417,6 @@ for epoca in range(num_epocas):
                   cnn_ok = acuracia_gerador
                   print(f'Texto novo analisado pela cnn: {texto_falso}')
                   print(f'Tentativa: {tentativa}, Perda cnn {perda_cnn.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia cnn {acuracia_cnn.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
-               if cnn_ok == 0:
-                   print('Cnn não aprovou o Gerador. Tentando novamente.')
            #Cnn deu ok, continuando do while.
            if cnn_ok > 0:
                print('Cnn deu ok. Passando pelo discriminador')
@@ -463,20 +457,10 @@ for epoca in range(num_epocas):
                print(f'Tipo {tipo}, Epoca {epoca + 1} de {num_epocas}, Perda Discriminador {perda_discriminador.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia Discriminador {acuracia_discriminador.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
            else:
                print('Cnn ainda não deu o ok.')
-           #No final de cada época, adicione as estatísticas à lista
-           estatisticas['tipo'].append(tipo)
-           estatisticas['epoca'].append(epoca)
-           estatisticas['num_epocas'].append(num_epocas)
-           estatisticas['perda_discriminador'].append(perda_discriminador.item())
-           estatisticas['perda_gerador'].append(perda_gerador.item())
-           estatisticas['acuracia_discriminador'].append(acuracia_discriminador.item() / 2)
-           estatisticas['acuracia_gerador'].append(acuracia_gerador.item())
-           estatisticas['perda_cnn'].append(perda_cnn.item())
-           estatisticas['acuracia_cnn'].append(acuracia_cnn.item() / 2)
-           if args.verbose == 'on':
-               print('Save stats info')
-           with open(stats,'w') as f:
-               json.dump(estatisticas, f)
+           print(f'Formato da saida: {textos_falsos.shape}')
+           if acuracia_gerador > 0:
+               output = decoder(textos_falsos[0].tolist(),tipo,numero_para_palavra)
+               print(f'Texto final: {output}')
            if args.save_time == 'samples':
                if args.verbose == 'on' or args.verbose == 'cnn':
                   print('Salvando modelos')

@@ -8,7 +8,7 @@ import json
 # Pasta onde estão as subpastas .wld, .obj, .mob, .zon, .qst, .shp e .trg
 pasta = os.path.expanduser('~/mud/tba2024/lib/world')
 
-types = ['.wld', '.obj', '.mob', '.qst', '.shp', '.trg']
+types = ['.mob']
 
 # Função para construir e salvar o vocabulário para cada tipo
 def carregar_vocabulario(pasta, tipo):
@@ -66,4 +66,4 @@ for tipo in types:
     # Padronizando o tamanho dos textos codificados
     dados_codificados = torch.nn.utils.rnn.pad_sequence(dados_codificados, batch_first=True)
     # Salvando os dados codificados
-    torch.save(dados_codificados, os.path.expanduser(f'~/mud/gan/{tipo[1:]}r1.pt'))
+    torch.save(dados_codificados, os.path.expanduser(f'~/mud/gan/v1/{tipo[1:]}.pt'))
