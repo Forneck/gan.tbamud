@@ -12,7 +12,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, DataLoader
 
 agora = datetime.datetime.now()
-timestamp = agora.strftime("%Y-%m-%d_%H-%M-%S")
+timestamp = agora.strftime("%H-%M-%S_%d-%m-%Y")
 print(f'Inicio da sessão: {timestamp}')
 stats = f'session-gcd_{timestamp}.json'
 pasta = os.path.expanduser('~/mud/gan/v1')
@@ -332,6 +332,30 @@ for tipo in types:
 dataset_gerador = GeneratorOutputDataset(gerador[tipo], noise_dim, num_samples, noise_samples,max_length,min_length)
 loader_gerador = DataLoader(dataset_gerador, batch_size=tamanho_lote, shuffle=True)
 
+def generate_text(gerador, texto_entrada, input_len, min_len, text_len):
+    # Inicializa o tensor de saída
+    texto_saida = torch.zeros((texto_entrada.size(0), text_len), dtype=torch.long)
+
+    # Divide o texto de entrada em chunks
+    for i in range(0, input_len, gerador.noise_dim):
+        # Obtém o próximo chunk do texto de entrada
+        chunk_entrada = texto_entrada[:, i:i+gerador.noise_dim]
+
+        # Passa o chunk pelo gerador
+        chunk_saida, _ = gerador(chunk_entrada)
+
+        # Anexa o chunk de saída ao texto de saída
+        texto_saida[:, i:i+gerador.noise_dim] = torch.argmax(chunk_saida, dim=-1)
+
+    # Calcula o tamanho aleatório do texto
+    random_text_len = torch.randint(min_len, text_len + 1, (texto_entrada.size(0),))
+
+    # Ajusta o tamanho do texto para o tamanho aleatório
+    texto_saida = texto_saida[:, :random_text_len.max()]
+
+    return texto_saida
+
+
 print('Iniciando o treinamento')
 for epoca in range(num_epocas):
     for tipo in types:
@@ -403,7 +427,18 @@ for epoca in range(num_epocas):
                      texto_falso = torch.argmax(textos_falsos, dim=-1).unsqueeze(-1)
                   else:
                      texto_falso = torch.argmax(texto_falso, dim=-1).unsqueeze(-1)
-                  texto_falso ,_ = gerador[tipo](texto_falso)
+                  textos_unpad = []
+                  for texto in texto_falso:
+                    texto = texto.tolist()
+                    while texto[-1] == 0:
+                          texto.pop()
+                    textos_unpad.append(texto)
+                  texto_falso = torch.tensor(textos_unpad)
+                  texto_falso ,_ = generate_text(gerador[tipo], texto_falso, len(texto_falso), min_length, max_length)
+                  print(f'Formato texto falso: {texto_falso.shape}')
+                  if len(texto_falso) < max_length:
+                          # Preenche os textos falsos com zeros à direita para atingir o tamanho máximo
+                          textos_falsos = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t), dtype=torch.int64))) for t in textos_falsos], batch_first=True)
                   texto_falso = torch.argmax(texto_falso, dim=2)
                   saida_cnn = cnn[tipo](texto_falso)
                   if args.verbose == 'on' or args.verbose == 'cnn':
@@ -472,6 +507,9 @@ for epoca in range(num_epocas):
            if acuracia_gerador > 1:
                output = decoder(textos_falsos[0].tolist(),tipo,numero_para_palavra)
                print(f'Texto final: {output}')
+               with open('gerados.txt', 'a') as file:
+                   file.write(output)
+
            if args.save_time == 'samples':
                if args.verbose == 'on' or args.verbose == 'cnn':
                   print('Salvando modelos')
@@ -509,3 +547,7 @@ if args.save_time == 'session':
         gerador[tipo].save_pretrained('https://huggingface.co/' + 'gerador_' + tipo[1:], use_auth_token=token)
         cnn[tipo].save_pretrained('https://huggingface.co' + 'cnn_' + tipo[1:], use_auth_token=token)
         discriminador[tipo].save_pretrained('https://huggingface.co/' + 'discriminador_' + tipo[1:], use_auth_token=token)
+
+agora = datetime.datetime.now()
+fim = agora.strftime("%H-%M-%S_%d-%m-%Y")
+print(f'Fim da sessão: {fim} com início em {timestamp}')
