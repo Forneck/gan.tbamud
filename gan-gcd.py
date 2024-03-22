@@ -587,7 +587,7 @@ for epoca in range(num_epocas):
                if args.verbose == 'on':
                   print('Calculando a acurácia do discriminador')
                acuracia_discriminador += ((saida_real[:,0] > limiar) == torch.ones_like(rotulos)).float().mean()
-               acuracia_discriminador += ((prob_gerado[:1]  > limiar) == torch.zeros_like(rotulos)).float().mean()
+               acuracia_discriminador += ((saida_real[:1]  > limiar) == torch.zeros_like(rotulos)).float().mean()
                print(f'Validação: Tipo {tipo}, Epoca {epoca + 1} de {num_epocas}, Perda Discriminador {perda_discriminador.item():.4f}, Acuracia Discriminador {acuracia_discriminador.item() / 2:.4f}')
 
 #Fim da sessão. Incluir teste:
