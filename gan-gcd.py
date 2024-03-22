@@ -12,7 +12,7 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, DataLoader
 
 agora = datetime.datetime.now()
-timestamp = agora.strftime("%H-%M-%S_%d-%m-%Y")
+timestamp = agora.strftime("%H:%M:%S_%d-%m-%Y")
 print(f'Inicio da sessão: {timestamp}')
 stats = f'session-gcd_{timestamp}.json'
 pasta = os.path.expanduser('~/mud/gan/v1')
@@ -470,13 +470,12 @@ for epoca in range(num_epocas):
                   if args.verbose == 'on':
                      print(f'Texto novo analisado pela cnn: {texto_falso}')
                   if args.verbose == 'on' or args.verbose == 'cnn':
-                     print(f'Tentativa: {tentativa}, Perda cnn {perda_cnn.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia cnn {acuracia_cnn.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
+                     print(f'Tentativa: {tentativa}, Perda cnn {perda_cnn.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia cnn {acuracia_cnn.item() / (2 * tentativa):.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
            #Cnn deu ok, continuando do while.
            if cnn_ok > 0:
                print('Cnn deu ok. Passando pelo discriminador')
                if tentativa > 0:
                   textos_falsos = texto_falso
-               #Passando o texto falso para o discriminador
                if len(textos_falsos) < max_length:
                   #Preenche os textos falsos com zeros à direita para atingir o tamanho máximo
                   textos_falsos = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t), dtype=torch.int64))) for t in textos_falsos], batch_first=True)
@@ -549,6 +548,47 @@ for epoca in range(num_epocas):
                cnn[tipo].save_pretrained('https://huggingface.co/' + 'cnn_' + tipo[1:], use_auth_token=token)
                discriminador[tipo].save_pretrained('https://huggingface.co/' + 'discriminador_' + tipo[1:], use_auth_token=token)
     #Fim dos tipo para treinamento. Incluir validação:
+    for tipo in types:
+        # Fase de validação
+        print(f'Epoca {epoca} - Tipo {tipo} - Validação')
+        discriminador[tipo].eval()
+        cnn[tipo].eval()
+        with torch.no_grad():
+            for (textos, rotulos), textos_falsos in zip(valid_loaders[tipo],loader_gerador):
+               perda_discriminador, perda_cnn = 0, 0
+               acuracia_discriminador,acuracia_cnn = 0, 0
+               if args.verbose == 'on':
+                  print('Obtendo os textos e os rótulos do lote / amostra')
+                  print(f'Texto codificado de treinamento: {textos} e o rótulo: {rotulos}')
+               print(f'Rotulo do texto de validação: {rotulos}')
+               if args.verbose == 'on':
+                  print('Zerando a acurácia para a amostra')
+               acuracia_discriminador, acuracia_cnn = 0, 0
+               if args.verbose == 'on':
+                  print('Calculando a perda da cnn')
+               saida_real = cnn[tipo](textos)
+               print(f'Saida da cnn com textos de validação {saida_real}')
+               rotulos_float = rotulos.float()
+               rotulos_reshaped = rotulos_float.view(-1, 1).repeat(1, 2)
+               perda_real = criterio_cnn(saida_real, rotulos_reshaped)
+               perda_cnn = perda_real
+               if args.verbose == 'on' or args.verbose == 'cnn':
+                  print('Calculando a acurácia do cnn')
+               acuracia_cnn += ((saida_real[:,0] > limiar) == torch.ones_like(rotulos)).float().mean()
+               acuracia_cnn += ((saida_falso[:,1] > limiar) == torch.zeros_like(rotulos)).float().mean()
+               print(f'Validação: Tipo {tipo}, Epoca {epoca + 1} de {num_epocas}, Perda cnn {perda_cnn.item():.4f}, Acuracia cnn {acuracia_cnn.item() / 2:.4f}')
+               saida_real, _ = discriminador[tipo](textos)
+               saida_real = torch.exp(saida_real)
+               print(f'Saida do discriminador para texto de validação: {saida_real}')
+               rotulos_float = rotulos.float()
+               rotulos_reshaped = rotulos_float.view(-1, 1).repeat(1, 2)
+               perda_real = criterio_discriminador(saida_real, rotulos_reshaped)
+               perda_discriminador = perda_real
+               if args.verbose == 'on':
+                  print('Calculando a acurácia do discriminador')
+               acuracia_discriminador += ((saida_real[:,0] > limiar) == torch.ones_like(rotulos)).float().mean()
+               acuracia_discriminador += ((prob_gerado[:1]  > limiar) == torch.zeros_like(rotulos)).float().mean()
+               print(f'Validação: Tipo {tipo}, Epoca {epoca + 1} de {num_epocas}, Perda Discriminador {perda_discriminador.item():.4f}, Acuracia Discriminador {acuracia_discriminador.item() / 2:.4f}')
 
 #Fim da sessão. Incluir teste:
 if args.save_time == 'session':
@@ -564,5 +604,5 @@ if args.save_time == 'session':
         discriminador[tipo].save_pretrained('https://huggingface.co/' + 'discriminador_' + tipo[1:], use_auth_token=token)
 
 agora = datetime.datetime.now()
-fim = agora.strftime("%H-%M-%S_%d-%m-%Y")
-print(f'Fim da sessão: {fim} com início em {timestamp}')
+fim = agora.strftime("%H:%M:%S_%d-%m-%Y")
+print(f'Início da sessão em {timestamp} com fim em {fim}')
