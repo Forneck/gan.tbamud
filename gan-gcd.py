@@ -44,12 +44,12 @@ def limit_noise_dim(value):
 
 def limit_treshold(value):
     ivalue = int(value)
-    if ivalue > 100:
-        ivalue = 100
-        print('O valor máximo é de 100')
+    if ivalue > 99:
+        ivalue = 99
+        print('O valor máximo do limiar é de 99%')
     if ivalue < 50:
         ivalue = 50
-        print('O valor mínimo é de 50')
+        print('O valor mínimo do limiar é de 50%')
     return ivalue
 
 # Definindo o argumento para escolher entre salvar localmente ou na nuvem
@@ -62,7 +62,7 @@ parser.add_argument('--noise_dim', type=limit_noise_dim, default=100, help='Dime
 parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador')
 parser.add_argument('--verbose', choices=['on', 'off', 'cnn'], default='off', help='Mais informações de saída')
 parser.add_argument('--max_tentativas', type=int,default=3, help='Número maximo de passagens de repasse pelo gerador')
-parser.add_argument('--limiar', type=limit_treshold, default=51, help='Limiar para considerar texto verdadeiro ou falso. Valor entre 50 e 100 - em %')
+parser.add_argument('--limiar', type=limit_treshold, default=51, help='Limiar para considerar texto verdadeiro ou falso. Valor entre 50 e 99 - em %')
 args = parser.parse_args()
 
 if args.verbose == 'on':
