@@ -42,6 +42,16 @@ def limit_noise_dim(value):
         ivalue = 1
     return ivalue
 
+def limit_treshold(value):
+    ivalue = int(value)
+    if ivalue > 100:
+        ivalue = 100
+        print('O valor máximo é de 100')
+    if ivalue < 50:
+        ivalue = 50
+        print('O valor mínimo é de 50')
+    return ivalue
+
 # Definindo o argumento para escolher entre salvar localmente ou na nuvem
 parser = argparse.ArgumentParser()
 parser.add_argument('--save_mode', choices=['local', 'nuvem'], default='local', help='Escolha onde salvar o modelo')
@@ -52,6 +62,7 @@ parser.add_argument('--noise_dim', type=limit_noise_dim, default=100, help='Dime
 parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador')
 parser.add_argument('--verbose', choices=['on', 'off', 'cnn'], default='off', help='Mais informações de saída')
 parser.add_argument('--max_tentativas', type=int,default=3, help='Número maximo de passagens de repasse pelo gerador')
+parser.add_argument('--limiar', type=limit_treshold, default=51, help='Limiar para considerar texto verdadeiro ou falso. Valor entre 50 e 100 - em %')
 args = parser.parse_args()
 
 if args.verbose == 'on':
@@ -206,7 +217,7 @@ noise_dim = args.noise_dim # entre 1 e 100
 noise_samples = 1
 max_tentativas = args.max_tentativas #tentativas de repasse para o gerador se não aprovado pela cnn
 num_samples = args.num_samples #numero de amostras dentro da mesma época
-
+limiar = args.limiar/100
 textos_falsos = {}
 
 # Inicializar os DataLoaders para cada tipo
@@ -364,6 +375,7 @@ def generate_text(gerador, texto_entrada, input_len, min_len, text_len):
 print('Iniciando o treinamento')
 for epoca in range(num_epocas):
     for tipo in types:
+        print(f'Epoca {epoca} - Tipo {tipo} - Treinamento')
         gerador[tipo].train()
         discriminador[tipo].train()
         cnn[tipo].train()
@@ -416,9 +428,9 @@ for epoca in range(num_epocas):
            otimizador_gerador[tipo].step()
            if args.verbose == 'on' or args.verbose == 'cnn':
                   print('Calculando a acurácia do cnn e do gerador')
-           acuracia_cnn += ((saida_real[:,0] > 0.5) == torch.ones_like(rotulos)).float().mean()
-           acuracia_cnn += ((saida_falso[:,1] > 0.5) == torch.zeros_like(rotulos)).float().mean()
-           acuracia_gerador += ((saida_falso[:, 0] > 0.5) == torch.ones_like(rotulos)).float().mean()
+           acuracia_cnn += ((saida_real[:,0] > limiar) == torch.ones_like(rotulos)).float().mean()
+           acuracia_cnn += ((saida_falso[:,1] > limiar) == torch.zeros_like(rotulos)).float().mean()
+           acuracia_gerador += ((saida_falso[:, 0] > limiar) == torch.ones_like(rotulos)).float().mean()
            cnn_ok = acuracia_gerador
            if args.verbose == 'on' or args.verbose == 'cnn':
               print(f'Tipo {tipo}, Epoca {epoca + 1} de {num_epocas}, Perda cnn {perda_cnn.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia cnn {acuracia_cnn.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
@@ -446,9 +458,9 @@ for epoca in range(num_epocas):
                   saida_cnn = cnn[tipo](texto_falso)
                   if args.verbose == 'on' or args.verbose == 'cnn':
                      print(f'Saida da Cnn para esta tentativa: {saida_cnn}')
-                  acuracia_cnn += ((saida_real[:,0] > 0.5) == torch.ones_like(rotulos)).float().mean()
-                  acuracia_cnn += ((saida_falso[:,1] > 0.5) == torch.zeros_like(rotulos)).float().mean()
-                  acuracia_gerador += ((saida_cnn[:, 0] > 0.5) == torch.ones_like(rotulos)).float().mean()
+                  acuracia_cnn += ((saida_real[:,0] > limiar) == torch.ones_like(rotulos)).float().mean()
+                  acuracia_cnn += ((saida_falso[:,1] > limiar) == torch.zeros_like(rotulos)).float().mean()
+                  acuracia_gerador += ((saida_cnn[:, 0] > limiar) == torch.ones_like(rotulos)).float().mean()
                   saida_cnn_log = torch.log_softmax(saida_cnn, dim=-1) #revertendo para log_softmax para calcular a perda     
                   perda_gerador = criterio_gerador(saida_cnn_log,rotulos_reshaped)
                   otimizador_gerador[tipo].zero_grad()
@@ -499,9 +511,9 @@ for epoca in range(num_epocas):
                otimizador_gerador[tipo].step()
                if args.verbose == 'on':
                   print('Calculando a acurácia do discriminador e do gerador')
-               acuracia_discriminador += ((saida_real[:,0] > 0.5) == torch.ones_like(rotulos)).float().mean()
-               acuracia_discriminador += ((prob_gerado[:1]  > 0.5) == torch.zeros_like(rotulos)).float().mean()
-               acuracia_gerador += ((prob_gerado[:,0] > 0.5) == torch.ones_like(rotulos)).float().mean()
+               acuracia_discriminador += ((saida_real[:,0] > limiar) == torch.ones_like(rotulos)).float().mean()
+               acuracia_discriminador += ((prob_gerado[:1]  > limiar) == torch.zeros_like(rotulos)).float().mean()
+               acuracia_gerador += ((prob_gerado[:,0] > limiar) == torch.ones_like(rotulos)).float().mean()
                #Imprimindo as perdas e as acurácias
                print(f'Tipo {tipo}, Epoca {epoca + 1} de {num_epocas}, Perda Discriminador {perda_discriminador.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia Discriminador {acuracia_discriminador.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
            else:
