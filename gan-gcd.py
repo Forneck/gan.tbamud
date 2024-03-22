@@ -337,15 +337,21 @@ def generate_text(gerador, texto_entrada, input_len, min_len, text_len):
     texto_saida = torch.zeros((texto_entrada.size(0), text_len), dtype=torch.long)
 
     # Divide o texto de entrada em chunks
-    for i in range(0, input_len, gerador.noise_dim):
+    for i in range(0, input_len, noise_dim):
         # Obtém o próximo chunk do texto de entrada
-        chunk_entrada = texto_entrada[:, i:i+gerador.noise_dim]
+        chunk_entrada = texto_entrada[:, i:i+noise_dim]
+
+        # Verifica se o tamanho do chunk_entrada é menor que noise_dim
+        if chunk_entrada.size(1) < noise_dim:
+            # Se for, preenche o restante com zeros
+            padding = torch.zeros((chunk_entrada.size(0), noise_dim - chunk_entrada.size(1)), dtype=torch.long)
+            chunk_entrada = torch.cat([chunk_entrada, padding], dim=1)
 
         # Passa o chunk pelo gerador
         chunk_saida, _ = gerador(chunk_entrada)
 
         # Anexa o chunk de saída ao texto de saída
-        texto_saida[:, i:i+gerador.noise_dim] = torch.argmax(chunk_saida, dim=-1)
+        texto_saida[:, i:i+noise_dim] = torch.argmax(chunk_saida, dim=-1)
 
     # Calcula o tamanho aleatório do texto
     random_text_len = torch.randint(min_len, text_len + 1, (texto_entrada.size(0),))
@@ -354,7 +360,6 @@ def generate_text(gerador, texto_entrada, input_len, min_len, text_len):
     texto_saida = texto_saida[:, :random_text_len.max()]
 
     return texto_saida
-
 
 print('Iniciando o treinamento')
 for epoca in range(num_epocas):
@@ -423,10 +428,9 @@ for epoca in range(num_epocas):
            while acuracia_gerador == 0 and tentativa < max_tentativas:
                   tentativa=tentativa+1
                   print(f'Tentativa {tentativa} de repassar o texto pelo gerador')
-                  if tentativa == 1:
-                     texto_falso = torch.argmax(textos_falsos, dim=-1).unsqueeze(-1)
-                  else:
-                     texto_falso = torch.argmax(texto_falso, dim=-1).unsqueeze(-1)
+                  if tentativa==1:
+                      texto_falso = textos_falsos
+                      #texto_falso = torch.argmax(texto_falso, dim=-1).unsqueeze(-1)
                   textos_unpad = []
                   for texto in texto_falso:
                     texto = texto.tolist()
@@ -434,12 +438,11 @@ for epoca in range(num_epocas):
                           texto.pop()
                     textos_unpad.append(texto)
                   texto_falso = torch.tensor(textos_unpad)
-                  texto_falso ,_ = generate_text(gerador[tipo], texto_falso, len(texto_falso), min_length, max_length)
-                  print(f'Formato texto falso: {texto_falso.shape}')
+                  texto_falso = generate_text(gerador[tipo], texto_falso, len(texto_falso), min_length, max_length)
                   if len(texto_falso) < max_length:
                           # Preenche os textos falsos com zeros à direita para atingir o tamanho máximo
                           textos_falsos = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t), dtype=torch.int64))) for t in textos_falsos], batch_first=True)
-                  texto_falso = torch.argmax(texto_falso, dim=2)
+                  #texto_falso = torch.argmax(texto_falso, dim=2)
                   saida_cnn = cnn[tipo](texto_falso)
                   if args.verbose == 'on' or args.verbose == 'cnn':
                      print(f'Saida da Cnn para esta tentativa: {saida_cnn}')
