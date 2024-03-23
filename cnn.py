@@ -27,6 +27,7 @@ taxa_aprendizado_cnn = 0.0001
 num_epocas = args.num_epocas 
 tamanho_lote = 1 #args.tamanho_lote 
 num_samples = args.num_samples #numero de amostras dentro da mesma época
+limiar = args.limiar
 
 class Cnn(nn.Module):
     def __init__(self, vocab_size, embedding_dim,output_size):
