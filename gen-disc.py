@@ -48,6 +48,7 @@ parser.add_argument('--tamanho_lote', type=int, default=1, help='Tamanho do lote
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
 parser.add_argument('--noise_dim', type=limit_noise_dim, default=100, help='Dimensão do ruído para o gerador')
 parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador') 
+parser.add_argument('--limiar', type=float, default=0.51, help='Limiar minimo para considerar real punfalso. EM PONTO FLUTUANTE. De 0 a .9995')
 parser.add_argument('--verbose', choices=['on', 'off'], default='off', help='Mais informações de saída')
 args = parser.parse_args()
 
@@ -210,7 +211,7 @@ taxa_aprendizado_gerador = 0.01 #era 0.0001 mas demorava para aprender
 noise_dim = args.noise_dim # entre 1 e 100
 noise_samples = args.noise_samples #numero de amostras de ruído
 num_samples = args.num_samples #numero de amostras dentro da mesma época
-
+limiar = args.limiar
 textos_falsos = {}
 
 # Inicializar os DataLoaders para cada tipo
@@ -381,9 +382,9 @@ for epoca in range(num_epocas):
             otimizador_gerador[tipo].step()
             if args.verbose == 'on':
                 print('Calculando a acurácia do discriminador e do gerador')
-            acuracia_discriminador += ((saida_real > 0.5) == rotulos).float().mean()
-            acuracia_discriminador += ((saida_falso < 0.5) == torch.zeros_like(rotulos)).float().mean()
-            acuracia_gerador += ((saida_falso > 0.5) == torch.ones_like(rotulos)).float().mean()
+            acuracia_discriminador += ((saida_real[:,0] > 0.5) == rotulos).float().mean()
+            acuracia_discriminador += ((saida_real[:,1] < 0.5) == torch.zeros_like(rotulos)).float().mean()
+            acuracia_gerador += ((saida_falso[:,0] > 0.5) == torch.ones_like(rotulos)).float().mean()
             # Imprimindo as perdas e as acurácias
             print(f'Tipo {tipo}, Epoca {epoca + 1} de {num_epocas}, Perda Discriminador {perda_discriminador.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia Discriminador {acuracia_discriminador.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
             # No final de cada época, adicione as estatísticas à lista

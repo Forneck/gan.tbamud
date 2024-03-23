@@ -346,9 +346,9 @@ for epoca in range(num_epocas):
             otimizador_gerador[tipo].step()
             if args.verbose == 'on':
                 print('Calculando a acurácia do cnn e do gerador')
-            acuracia_cnn += ((saida_real > 0.5) == rotulos).float().mean()
-            acuracia_cnn += ((saida_falso < 0.5) == torch.zeros_like(rotulos)).float().mean()
-            acuracia_gerador += ((saida_falso > 0.5) == torch.ones_like(rotulos)).float().mean()
+            acuracia_cnn += ((saida_real > 0.51) == torch.ones_like(rotulos)).float().mean()
+            acuracia_cnn += ((saida_falso < 0.51) == torch.zeros_like(rotulos)).float().mean()
+            acuracia_gerador += ((saida_falso > 0.51) == torch.ones_like(rotulos)).float().mean()
             # Imprimindo as perdas e as acurácias
             print(f'Tipo {tipo}, Epoca {epoca + 1} de {num_epocas}, Perda cnn {perda_cnn.item():.4f}, Perda Gerador {perda_gerador.item():.4f}, Acuracia cnn {acuracia_cnn.item() / 2:.4f}, Acuracia Gerador {acuracia_gerador.item():.4f}')
             tentativa = 0

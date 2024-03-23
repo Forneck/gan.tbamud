@@ -209,10 +209,7 @@ for epoca in range(num_epocas):
             rotulos_reshaped = rotulos_float.view(-1, 1).repeat(1, 2)
             #Identifica com os rotulos certos
             perda_real = criterio_cnn(saida_real, rotulos_reshaped)
-            #com os rotulos como falsos
-            perda_falso_zero = criterio_cnn(saida_real, torch.zeros_like(rotulos_reshaped))
-            perda_falso_um = criterio_cnn(saida_real, torch.ones_like(rotulos_reshaped))
-            perda_cnn = (perda_real + perda_falso_zero + perda_falso_um) / 3
+            perda_cnn = perda_real
             if args.verbose == 'on':
                 print('Atualizando os parâmetros do cnn')
             otimizador_cnn[tipo].zero_grad()
