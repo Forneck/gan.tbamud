@@ -12,6 +12,7 @@ import datetime
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, DataLoader
 
+print('Treinamento e Validação da Cnn')
 types = ['.mob']
 pasta = os.path.expanduser('~/mud/gan/v1')
 agora = datetime.datetime.now()
