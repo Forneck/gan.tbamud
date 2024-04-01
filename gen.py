@@ -15,7 +15,7 @@ print('Iniciando treinamento exclusivo do Gerador')
 agora = datetime.datetime.now()
 timestamp = agora.strftime("%H:%M:%S_%d-%m-%Y")
 print(f'Inicio da sessão: {timestamp}')
-stats = f'session-gen.json'
+stats = f'session-gen-{timestamp}.json'
 pasta = os.path.expanduser('~/mud/gan/v1')
 # Tipos de arquivos que você quer gerar
 types = ['.mob']
@@ -48,6 +48,7 @@ parser.add_argument('--noise_samples', type=int,default=1, help='Número de amos
 parser.add_argument('--verbose', choices=['on', 'off'], default='off', help='Mais informações de saída')
 parser.add_argument('--max_tentativas', type=int,default=3, help='Número maximo de passagens de repasse pelo gerador')
 parser.add_argument('--modo', choices=['all','train','val'], default='all', help='Modo da gan')
+parser.add_argument('--tamanho_lote', type=int,default=1, help='Tamanho do lote do loader do gerador')
 args = parser.parse_args()
 
 if args.verbose == 'on':
@@ -122,6 +123,25 @@ def encoder(palavras, tipo, palavra_para_numero):
    # return [palavra_para_numero[tipo].get(palavra, 0) for palavra in nltk.word_tokenize(texto)]  # usando o nltk para tokenizar
     return [palavra_para_numero[tipo].get(palavra, 0) for palavra in palavras]
 
+def unpad(texto_entrada):
+       unpad = []
+       for texto in texto_entrada:
+              texto = texto.tolist()
+              while texto[-1] == 0:
+                    texto.pop()
+              unpad.append(texto)
+              texto_saida = torch.tensor(unpad)
+       return texto_saida
+
+def comp_size(texto_a, texto_b):
+      lista = []
+      for texto in texto_a:
+          while texto[-1] == 0:
+            texto.pop()
+          if len(texto) == len(texto_b):
+             lista.append(texto)
+      return lista
+
 if args.verbose == 'on':
     print('Definindo o Decoder')
 def decoder(texto_codificado, tipo, numero_para_palavra):
@@ -150,8 +170,8 @@ def carregar_vocabulario(pasta, types):
 if args.verbose == 'on':
     print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
-tamanho_lote = 1 
-taxa_aprendizado_gerador = 0.01 #inicial 0.0001
+tamanho_lote = args.tamanho_lote
+taxa_aprendizado_gerador = 0.001 #inicial 0.0001
 noise_dim = args.noise_dim # entre 1 e 100
 noise_samples = 1
 max_tentativas = args.max_tentativas #tentativas de repasse para o gerador se não aprovado pela cnn
@@ -176,14 +196,14 @@ for tipo in types:
         print('Padronizando o tamanho dos textos reais e falsos')
     max_length = max(max([len(t) for t in textos_reais[tipo]]), max([len(t) for t in textos_falsos[tipo]]))
 # Criando uma lista vazia para os textos reais sem padding
-    textos_unpad = []
+    real_unpad = []
     for texto in textos_reais[tipo]:
          texto = texto.tolist()
          while texto[-1] == 0:
             texto.pop()
-         textos_unpad.append(texto)
+         real_unpad.append(texto)
  
-    min_length = min(len(texto) for texto in textos_unpad)
+    min_length = min(len(texto) for texto in real_unpad)
     if args.verbose == 'on':
         print(f'Min length for real text: {min_length}')
     textos_reais_pad = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t)))) for t in textos_reais[tipo]], batch_first=True)
@@ -286,16 +306,6 @@ def generate_text(gerador, texto_entrada, input_len, min_len, text_len):
 
     return texto_saida
 
-def unpad(texto_falso):
-       textos_unpad = []
-       for texto in texto_falso:
-              texto = texto.tolist()
-              while texto[-1] == 0:
-                          texto.pop()
-              textos_unpad.append(texto)
-              texto_falso = torch.tensor(textos_unpad)
-       return texto_falso
-
 print('Iniciando o treinamento')
 for epoca in range(num_epocas):
     for tipo in types:
@@ -303,29 +313,49 @@ for epoca in range(num_epocas):
         gerador[tipo].train()
         perda_gerador  = 0
         for (textos, rotulos), textos_falsos in zip(train_loaders[tipo], loader_gerador):
-           if args.verbose == 'on':
-              print('Obtendo os textos e os rótulos do lote / amostra')
-              print(f'Texto codificado de treinamento: {textos} e o rótulo: {rotulos}')
-           print(f'Rotulo do texto de treinamento: {rotulos}')
+           print(f'Rotulo: {rotulos} e formato {textos.shape}')
            textos_falsos = textos_falsos.view(textos_falsos.size(0), -1)
-           # Verifica se o tamanho dos textos falsos é menor que max_length
-           if len(textos_falsos) < max_length:
-               # Preenche os textos falsos com zeros à direita para atingir o tamanho máximo
-               textos_falsos = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t), dtype=torch.int64))) for t in textos_falsos], batch_first=True)
-           rotulos_float = rotulos.float()
-           rotulos_reshaped = rotulos_float.view(-1, 1).repeat(1, 2)
            if args.verbose == 'on':
-              print('Calculando a perda do gerador, usando os textos falsos e os rótulos invertidos')
-           rotulos_reshaped = torch.ones(textos_falsos.size(0), dtype=torch.long)
-           rotulos_reshaped.view(-1)
-           textos_falsos = unpad(textos_falsos)
+              print('Calculando a perda do gerador')
+           #unpad do gerador, compara os textos reais com o tamanho do gerador e escolhe um para usar como rótulo da NLLLOSS
+           print('Criando a lista de escolha')
+           lista_real = []
+           print(f'Formato da saida do gerador: {textos_falsos.shape}')        
+           # Se rótulos for 1, adicione o conteúdo de textos em lista_real
+           if rotulos == 1:
+               for texto in textos:
+                   while texto(-1) == 0:
+                       texto.pop()
+               lista_real.append(texto)
+           else:
+              # Se não for, procure um texto em real_unpad com a mesma largura do texto em textos_falsos e adicione em lista_real
+              for fake in textos_falsos:
+                   lista_real.extend(comp_size(real_unpad, fake))         
+           # Se lista_real ainda assim estiver vazia ou não tiver o mesmo tamanho de textos_falsos
+           novo_texto = textos_falsos
+           while len(novo_texto) != len(lista_real[0]):
+              print('Nenhum texto real com o mesmo tamanho da saida do gerador.')
+              print('Gerando novo texto')
+              prompt = torch.randint(0, len(numero_para_palavra[tipo]), (1, noise_dim))
+              novo_texto = generate_text(gerador[tipo], prompt, len(prompt), len(textos), max_length)
+              print(f'{novo_texto.shape}')
+              lista_real.extend(comp_size(real_unpad, novo_texto))
+              textos_falsos = novo_texto
+           print('Texto encontrado')
+
+           # Escolha um texto real_exemplo dessa lista
+           indice_aleatorio = torch.randint(0, len(lista_real), (1,))
+           real_exemplo = lista_real[indice_aleatorio.item()].float()
+           real_exemplo = real_exemplo.squeeze(0)
+
+           print(f'Formato do exemplo a ser usado como rotulos: {real_exemplo.shape} e do texto gerado: {textos_falsos.shape}')
+           #log-probabilidades do gerador
            gerador_log = torch.log_softmax(textos_falsos.float(),dim=-1)
-           print(f'Saida do gerador antes do log: {textos_falsos.shape} e depois do log: {gerador_log.shape}')
            gerador_log.requires_grad_()
            if args.verbose == 'on':
-               print(f'Saida do gerador: {textos_falsos}')
-               print(f'Log da saida: {gerador_log}')
-           perda_gerador = criterio_gerador(gerador_log,rotulos_reshaped)
+               print(f'Saida do gerador: {textos_falsos.shape}')
+               print(f'Log da saida: {gerador_log.shape}')
+           perda_gerador = criterio_gerador(gerador_log,real_exemplo)
            if args.verbose == 'on':
                   print('Atualizando os parâmetros do gerador')
            otimizador_gerador[tipo].zero_grad()
@@ -337,11 +367,12 @@ for epoca in range(num_epocas):
            estatisticas['num_epocas'].append(num_epocas)
            estatisticas['perda_gerador'].append(perda_gerador.item())
            # Save stats info
-           with open(stats,'a') as f:
+           with open(stats,'w') as f:
                 json.dump(estatisticas, f)
            output = decoder(textos_falsos[0].tolist(),tipo,numero_para_palavra)
-           print(f'Texto final: {output}')
-           with open('gerador-treino.txt', 'a') as file:
+           if args.verbose == 'on' or perda_gerador < 5:
+              print(f'Texto final: {output}')
+              with open('gerador-treino.txt', 'a') as file:
                    file.write(output)
 
            if args.save_time == 'samples':
