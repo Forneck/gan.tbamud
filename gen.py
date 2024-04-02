@@ -321,41 +321,32 @@ for epoca in range(num_epocas):
            print('Criando a lista de escolha')
            lista_real = []
            print(f'Formato da saida do gerador: {textos_falsos.shape}')        
+           textos = pad_sequence([torch.cat((t, torch.zeros(max_length - len(t)))) for t in textos_falsos], batch_first=True)
            # Se rótulos for 1, adicione o conteúdo de textos em lista_real
-           if rotulos == 1:
-               for texto in textos:
-                   while texto(-1) == 0:
-                       texto.pop()
-               lista_real.append(texto)
+           if rotulos== 1:
+                  lista_real.append(textos)
            else:
               # Se não for, procure um texto em real_unpad com a mesma largura do texto em textos_falsos e adicione em lista_real
-              for fake in textos_falsos:
-                   lista_real.extend(comp_size(real_unpad, fake))         
+              indice = torch.randint(1, len(textos_reais[tipo]), (1,))
+              lista_real.extend(textos_reais[tipo][indice])
            # Se lista_real ainda assim estiver vazia ou não tiver o mesmo tamanho de textos_falsos
-           novo_texto = textos_falsos
-           while len(novo_texto) != len(lista_real[0]):
-              print('Nenhum texto real com o mesmo tamanho da saida do gerador.')
-              print('Gerando novo texto')
-              prompt = torch.randint(0, len(numero_para_palavra[tipo]), (1, noise_dim))
-              novo_texto = generate_text(gerador[tipo], prompt, len(prompt), len(textos), max_length)
-              print(f'{novo_texto.shape}')
-              lista_real.extend(comp_size(real_unpad, novo_texto))
-              textos_falsos = novo_texto
-           print('Texto encontrado')
-
+           
            # Escolha um texto real_exemplo dessa lista
            indice_aleatorio = torch.randint(0, len(lista_real), (1,))
            real_exemplo = lista_real[indice_aleatorio.item()].float()
            real_exemplo = real_exemplo.squeeze(0)
 
            print(f'Formato do exemplo a ser usado como rotulos: {real_exemplo.shape} e do texto gerado: {textos_falsos.shape}')
+           if len(textos_falsos) != len(real_exemplo):
+              textos_falsos = pad_sequence([torch.cat((t, torch.zeros(len(real_exemplo) - len(t)))) for t in textos_falsos], batch_first=True)
            #log-probabilidades do gerador
-           gerador_log = torch.log_softmax(textos_falsos.float(),dim=-1)
+           for fake in textos_falsos:
+               gerador_log = torch.log_softmax(fake.float(),dim=-1)
            gerador_log.requires_grad_()
            if args.verbose == 'on':
                print(f'Saida do gerador: {textos_falsos.shape}')
                print(f'Log da saida: {gerador_log.shape}')
-           perda_gerador = criterio_gerador(gerador_log,real_exemplo)
+           perda_gerador = criterio_gerador(gerador_log,real_exemplo.long())
            if args.verbose == 'on':
                   print('Atualizando os parâmetros do gerador')
            otimizador_gerador[tipo].zero_grad()
