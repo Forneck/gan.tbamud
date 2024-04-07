@@ -48,7 +48,7 @@ parser.add_argument('--tamanho_lote', type=int, default=1, help='Tamanho do lote
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
 parser.add_argument('--noise_dim', type=limit_noise_dim, default=100, help='Dimensão do ruído para o gerador')
 parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador') 
-parser.add_argument('--limiar', type=float, default=0.51, help='Limiar minimo para considerar real punfalso. EM PONTO FLUTUANTE. De 0 a .9995')
+parser.add_argument('--limiar', type=float, default=0.51, help='Limiar minimo para considerar real ou falso. EM PONTO FLUTUANTE. De 0 a .9995')
 parser.add_argument('--verbose', choices=['on', 'off'], default='off', help='Mais informações de saída')
 args = parser.parse_args()
 
