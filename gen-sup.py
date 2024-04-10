@@ -38,16 +38,15 @@ def limit_noise_dim(value):
 parser = argparse.ArgumentParser()
 parser.add_argument('--save_mode', choices=['local', 'nuvem'], default='local', help='Escolha onde salvar o modelo')
 parser.add_argument('--save_time', choices=['epoch', 'session'], default='epoch', help='Escolha quando salvar o modelo')
-parser.add_argument('--num_epocas', type=int, default=1, help='Número de épocas para treinamento')
-parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
+parser.add_argument('--num_epocas', type=int, default=10, help='Número de épocas para treinamento')
 parser.add_argument('--noise_dim', type=limit_noise_dim, default=100, help='Dimensão do ruído para o gerador')
-parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador')
-parser.add_argument('--verbose', choices=['on', 'off'], default='off', help='Mais informações de saída')
-parser.add_argument('--modo', choices=['auto','manual', 'real'],default='auto', help='Modo do Prompt: Automatico ou Manual')
-parser.add_argument('--tamanho_lote', type=int,default=1, help='Tamanho do lote do loader do gerador')
+parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais informações de saída')
+parser.add_argument('--modo', choices=['auto','manual', 'real'],default='real', help='Modo do Prompt: Automatico, Manual ou Real')
 args = parser.parse_args()
 
-if args.verbose == 'on':
+verbose = args.verbose
+
+if verbose == 'on':
     print('Definindo a arquitetura do modelo gerador')
 class Gerador(torch.nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_dim, output_size):
@@ -113,7 +112,7 @@ class GeneratorOutputDataset(Dataset):
 
         return sample
 
-if args.verbose == 'on':
+if verbose == 'on':
     print('Definindo o Encoder')
 def encoder(texto, tipo, palavra_para_numero):
     return [palavra_para_numero[tipo].get(palavra, 0) for palavra in nltk.word_tokenize(texto)]  # usando o nltk para tokenizar
@@ -129,12 +128,12 @@ def unpad(texto_entrada):
               texto_saida = torch.tensor(unpad)
        return texto_saida
 
-if args.verbose == 'on':
+if verbose == 'on':
     print('Definindo o Decoder')
 def decoder(texto_codificado, tipo, numero_para_palavra):
       return ' '.join([numero_para_palavra[tipo].get(numero, '<UNK>') for numero in texto_codificado])
 
-if args.verbose == 'on':
+if verbose == 'on':
     print('Definindo o Vocabulario')
 def carregar_vocabulario(pasta, types):
     palavra_para_numero = {}
@@ -154,20 +153,16 @@ def carregar_vocabulario(pasta, types):
 
     return palavra_para_numero, numero_para_palavra, textos_reais
 
-if args.verbose == 'on':
+if verbose == 'on':
     print('Definindo os parâmetros de treinamento')
-num_epocas = args.num_epocas 
-tamanho_lote = args.tamanho_lote
-taxa_aprendizado_gerador = 1 #inicial 0.0001
+num_epocas = args.num_epocas
+taxa_aprendizado_gerador = 0.1 #inicial 0.0001
 noise_dim = args.noise_dim # entre 1 e 100
 noise_samples = 1
-max_tentativas = 3
 modo = args.modo
-num_samples = args.num_samples #numero de amostras dentro da mesma época
 textos_falsos = {}
 
 palavra_para_numero, numero_para_palavra,textos_reais = carregar_vocabulario(pasta, types)
-vocab_size = len(numero_para_palavra)
 
 for tipo in types:
     if args.verbose == 'on':
@@ -202,7 +197,7 @@ def solicitar_pontuacoes():
                 print('Entrada inválida. Por favor, insira um número inteiro entre 0 e 1')
     return pontuacoes
 
-if args.verbose == 'on':
+if verbose == 'on':
     print('Definindo o objetivo de aprendizado')
 criterio_gerador = torch.nn.MSELoss()
 
@@ -268,16 +263,17 @@ def generate_text(gerador, texto_entrada, input_len, min_len, text_len):
 
     return texto_saida
 
-
 print('Iniciando o treinamento')
 for tipo in types:
         print(f'Tipo {tipo} - Treinamento')
         perda_gerador  = 0
         pontuacao = 0
-        while pontuacao != 9:
+        epoca = 1
+        while epoca <= num_epocas:
            gerador[tipo].train()
            # Gere um novo texto
-           print(f'Gerando um novo texto no modo: {modo}')
+           if verbose == 'on':
+               print(f'Gerando um novo texto no modo: {modo}')
            if modo == 'manual':
               prompt = input(f'> ')
               if len(prompt.strip())==0:
@@ -289,49 +285,42 @@ for tipo in types:
                   rand = torch.randint(0,len(textos_reais[tipo]), (1,))
                   prompt = textos_reais[tipo][rand]
                   decoded = decoder(prompt[0].tolist(),tipo,numero_para_palavra)
-                  print(f'Prompt: {decoded}')
+                  if verbose == 'on':
+                     print(f'Prompt: {decoded}')
            else:
                prompt = torch.randint(0,len(numero_para_palavra[tipo]),(1,noise_dim))
 
            if modo != 'real' or prompt.size(-1)<noise_dim:  
                prompt = pad_sequence([torch.cat((t, torch.zeros(noise_dim - len(t)))) for t in prompt], batch_first=True)
-           textos_falsos = generate_text(gerador[tipo],prompt,len(prompt),25,max_length)
+           textos_falsos = generate_text(gerador[tipo],prompt,len(prompt),max_length,max_length)
            
            texto_int = textos_falsos.to(torch.int64)
            output = decoder(texto_int[0].tolist(),tipo,numero_para_palavra)
-           print(f'Saida Gerador: {output}')
-
-           # Solicite a pontuação do usuário
-           pontuacoes = solicitar_pontuacoes()
-           pontuacao = pontuacoes['Qualidade']
-           if pontuacao == 9:
-               break
-           pontuacao = torch.tensor([pontuacao]).float()
-           sig = torch.sigmoid(textos_falsos).mean().unsqueeze(0)
-           print(f'Valor calculado: {sig}')
-           sig.requires_grad_()
-           perda_gerador = criterio_gerador(sig,pontuacao)
+           if verbose == 'on':
+              print(f'Saida Gerador: {output}')
+           vocab = len(numero_para_palavra[tipo])
+           fake = textos_falsos/vocab
+           pontuacao = prompt/vocab
+           if verbose == 'on':
+              print(f'{fake.shape} e {pontuacao.shape}')
+           fake.requires_grad_()
+           perda_gerador = criterio_gerador(fake,pontuacao)
 
            # Atualize os parâmetros do gerador
            otimizador_gerador[tipo].zero_grad()
            perda_gerador.backward()
            otimizador_gerador[tipo].step()
-           print(f'Tipo {tipo}, Perda Gerador {perda_gerador.item():.4f}')
+           print(f'Tipo {tipo} - Epoca: {epoca}, Perda Gerador {perda_gerador.item()}')
            estatisticas['tipo'].append(tipo)
            estatisticas['perda_gerador'].append(perda_gerador.item())
+           epoca = epoca + 1
            #Save stats info
            with open(stats,'w') as f:
                 json.dump(estatisticas, f)
-           if args.save_time == 'samples':
-               if args.verbose == 'on' or args.verbose == 'cnn':
-                  print('Salvando modelos')
-               if arg.save_mode == 'local':
-                  torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
-               elif args.save_mode == 'nuvem':
-                  gerador[tipo].save_pretrained('https://huggingface.co/' + 'gerador_' + tipo[1:], use_auth_token=token)
+
         #Fim da epoca para o tipo atual
         if args.save_time == 'epoch':
-           if args.verbose == 'on':
+           if verbose == 'on':
                print('Salvando modelos')
            if args.save_mode == 'local':
                torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
@@ -341,7 +330,7 @@ for tipo in types:
 
 #Fim da sessão. Incluir teste:
 if args.save_time == 'session':
-    if args.verbose == 'on':
+    if verbose == 'on':
         print('Salvando modelos')
     if args.save_mode == 'local':
         torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
