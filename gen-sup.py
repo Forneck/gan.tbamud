@@ -15,7 +15,7 @@ print('Iniciando treinamento de qualidade do Gerador')
 agora = datetime.datetime.now()
 timestamp = agora.strftime("%H:%M:%S_%d-%m-%Y")
 print(f'Inicio da sessão: {timestamp}')
-stats = f'session-quality-{timestamp}.json'
+#stats = f'session-quality-{timestamp}.json'
 pasta = os.path.expanduser('~/gan/v1')
 # Tipos de arquivos que você quer gerar
 types = ['.mob']
@@ -44,7 +44,8 @@ parser.add_argument('--noise_dim', type=limit_noise_dim, default=100, help='Dime
 parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador')
 parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais informações de saída')
 parser.add_argument('--modo', choices=['auto','manual', 'real'],default='real', help='Modo do Prompt: Automatico ou Manual')
-parser.add_argument('--task', choices=['novo','completar'],default='completar', help='Novo texto ou completar texto')
+parser.add_argument('--prompt', choices=['curto','completo'],default='completo', help='Tipo do prompt: curto ou completo')
+parser.add_argument('--debug', choices=['on', 'off'], default='off', help='Debug Mode')
 args = parser.parse_args()
 
 if args.verbose == 'on':
@@ -168,9 +169,9 @@ num_epocas = args.num_epocas
 taxa_aprendizado_gerador = 0.01 #inicial 0.0001
 noise_dim = args.noise_dim # entre 1 e 100
 noise_samples = 1
-max_tentativas = 3
+debugn = args.debug
 modo = args.modo
-task = args.task
+pt = args.prompt
 num_samples = args.num_samples #numero de amostras dentro da mesma época
 textos_falsos = {}
 
@@ -180,7 +181,7 @@ max_length = {}
 min_length = {}
 for tipo in types:
     if args.verbose == 'on':
-        print("Formato dos textos reais para o tipo {tipo}: ",textos_reais[tipo].shape)
+        print(f"Formato dos textos reais para o tipo {tipo}:{textos_reais[tipo].shape}")
     max_length[tipo] = max([len(t) for t in textos_reais[tipo]])
     rotulos = [1]*len(textos_reais[tipo])
     textos_unpad = []
@@ -244,7 +245,6 @@ for tipo in types:
 otimizador_gerador = {}
 for tipo in types:
     otimizador_gerador[tipo] = torch.optim.Adam(gerador[tipo].parameters(), lr=taxa_aprendizado_gerador)
-print(f'{otimizador_gerador}')
 
 # Criando o dataset para as saídas do gerador
 dataset_gerador = GeneratorOutputDataset(gerador[tipo], noise_dim, 1, noise_samples,max_length[tipo],min_length)
@@ -291,10 +291,11 @@ def generate_text(gerador, texto_entrada, input_len, min_len, text_len):
 
     return texto_saida
 
-print(f'Pesos antes do treinamento: {gerador[tipo].state_dict()}')
-peso_inicio = gerador[tipo].state_dict()
+#print(f'Pesos antes do treinamento: {gerador[tipo].state_dict()}')
+peso_inicio = {}
 print('Iniciando o treinamento')
 for tipo in types:
+        peso_inicio[tipo] = gerador[tipo].state_dict()
         print(f'Tipo {tipo} - Treinamento')
         perda_gerador  = 0
         epoca = 1
@@ -310,48 +311,70 @@ for tipo in types:
               else:
                   prompt = encoder(prompt,tipo,palavra_para_numero)
                   prompt = torch.tensor(prompt).unsqueeze(0)
+                  prompt = pad_sequence([torch.cat((t,torch.zeros(max_length[tipo] - len(t), dtype=torch.int64))) for t in prompt], batch_first=True)
            elif modo == 'real':
                   rand = torch.randint(0,len(textos_reais[tipo]), (1,))
                   prompt = textos_reais[tipo][rand]
-                  #decoded = decoder(prompt[0].tolist(),tipo,numero_para_palavra)
-                  #print(f'Prompt: {decoded}')
+                  decoded = decoder(prompt[0].tolist(),tipo,numero_para_palavra)
+                  if args.verbose == 'on':
+                     print(f'Prompt: {decoded}')
                   prompt_unpad = []
                   for texto in prompt:
                       texto = texto.tolist()
                       while texto[-1]==0:
                           texto.pop()
                       prompt_unpad.append(texto)
-                  prompt = torch.tensor(prompt_unpad)
-                  decoded_unpad = decoder(prompt[0].tolist(),tipo,numero_para_palavra)
-                  if args.verbose =='on':
-                     print(f'Prompt sem padding: {decoded_unpad}')
+                  prompt_unpad = torch.tensor(prompt_unpad)
+                  decoded_unpad = decoder(prompt_unpad[0].tolist(),tipo,numero_para_palavra)
+                  
            else:
                prompt = torch.randint(0,len(numero_para_palavra[tipo]),(1,noise_dim))
+               decoded = decoder(prompt[0].tolist(),tipo,numero_para_palavra)
+               if args.verbose == 'on':
+                   print(f'Prompt aleatorio: {decoded}')
+           
            #texto_falso = generate_text(gerador[tipo],prompt, len(prompt), min_length[tipo], max_length[tipo])
-           lprompt = prompt.to(torch.long)
-           texto_falso,_ = gerador[tipo](lprompt)
-           texto_falso = torch.log(texto_falso) 
+           lprompt = prompt.to(torch.int64)
+           if pt == 'curto':
+               prompt_slice = prompt[:, 2:6]
+               prompt_slice = pad_sequence([torch.cat((t, torch.zeros(max_length[tipo] - len(t),dtype = torch.int64))) for t in prompt_slice], batch_first=True)
+               prompt_slice = prompt_slice.to(torch.int64)
+               texto_falso,_ = gerador[tipo](prompt_slice)
+           else:
+               texto_falso,_ = gerador[tipo](lprompt)
+
            prompt_hot = F.one_hot(lprompt,len(numero_para_palavra[tipo])).float()
+           texto_falso = torch.log(texto_falso) 
            prompt_hot.requires_grad_()
            prompt_hot.retain_grad()
            texto_falso.requires_grad_()
            texto_falso.retain_grad()
            perda_gerador = criterio_gerador(texto_falso, prompt_hot)
-           otimizador_gerador[tipo].zero_grad()
            perda_gerador.backward()
-           print(f'{texto_falso.grad}')
            # Atualize os parâmetros do gerador
+           #print(f'Gradiente do gerador: {texto_falso.grad}\n Gradiente do esperado: {prompt_hot.grad}')
+           #Imprimir os gradientes
+           if debug == 'on':
+               for name, param in gerador[tipo].named_parameters():
+                   if param.requires_grad:
+                      print(name, param.grad)
+           
            otimizador_gerador[tipo].step()
+           otimizador_gerador[tipo].zero_grad()
+           if args.verbose == 'on':
+               texto_falso_max = torch.argmax(texto_falso, dim=-1)
+               texto_falso_max = texto_falso_max.to(torch.int64)
+               saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
+               print(f'Saida do Gerador: {saida}')
+
            epoca = epoca + 1
            print(f'Tipo {tipo}, Epoca {epoca-1}/{num_epocas} - Perda Gerador {perda_gerador}')
-           estatisticas['tipo'].append(tipo)
-           estatisticas['perda_gerador'].append(perda_gerador.item())
+           #estatisticas['tipo'].append(tipo)
+           #estatisticas['perda_gerador'].append(perda_gerador.item())
            #Save stats info
-           with open(stats,'w') as f:
-                json.dump(estatisticas, f)
+           #with open(stats,'w') as f:
+                #json.dump(estatisticas, f)
         
-        peso_fim = gerador[tipo].state_dict()
-        compare_state_dicts(peso_inicio, peso_fim)
         #Fim da epoca para o tipo atual
         if args.save_time == 'epoch':
            if args.verbose == 'on':
@@ -360,9 +383,17 @@ for tipo in types:
                torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
            elif args.save_mode == 'nuvem':
                gerador[tipo].save_pretrained('https://huggingface.co/' + 'gerador_' + tipo[1:], use_auth_token=token)
-    #Fim dos tipo para treinamento
+    
+        #Fim dos tipo para treinamento
 
 #Fim da sessão. Incluir teste:
+if debug == 'on':
+    peso_fim = {}
+    for tipo in types:
+        peso_fim[tipo] = gerador[tipo].state_dict()
+        print(f'Comparando os pesos para o tipo {tipo}:')
+        compare_state_dicts(peso_inicio[tipo], peso_fim[tipo])
+
 if args.save_time == 'session':
     if args.verbose == 'on':
         print('Salvando modelos')
