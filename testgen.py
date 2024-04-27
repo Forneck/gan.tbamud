@@ -1,24 +1,43 @@
-import torch
-from torch.utils.data import Dataset, DataLoader
-import nltk
 import os
+import torch
+import transformers
+import argparse
+import io
+import nltk
+import pickle
 import json
-
-# Definindo os parâmetros
+import collections
+import datetime
+from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import Dataset, DataLoader
+import torch.nn.functional as F
+print('Iniciando teste do Gerador')
+agora = datetime.datetime.now()
+inicio = agora.strftime("%H:%M:%S_%d-%m-%Y")
+print(f'Inicio da sessão: {inicio}')
 gerador_path = 'gerador_mob.pt'
-noise_dim = 100
-noise_samples = 1
-num_samples = 1
-tipo = '.mob'
-max_length = 253
 types= ['.mob']
 pasta = os.path.expanduser('~/mud/gan/v1')
 
-print('Definindo a arquitetura do modelo gerador')
+# Definindo o argumento para escolher entre salvar localmente ou na nuvem
+parser = argparse.ArgumentParser()
+parser.add_argument('--quantidade', type=int, default=1,help='Quantidade de textos gerados')
+parser.add_argument('--modo', choices=['auto','manual'],default='manual', help='Modo do Prompt: auto ou manual')
+parser.add_argument('--debug', choices=['on', 'off'], default='off', help='Debug Mode')
+parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mostra mais informaçōes de saida')
+args = parser.parse_args()
+
+quantidade = args.quantidade
+modo = args.modo
+debug = args.debug
+verbose = args.verbose
+
+if verbose == 'on':
+    print('Definindo a arquitetura do modelo gerador')
 class Gerador(torch.nn.Module):
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_size):
+    def __init__(self, input_dim, embedding_dim, hidden_dim, output_size):
         super(Gerador, self).__init__()
-        self.embedding = torch.nn.Embedding(vocab_size, embedding_dim)
+        self.embedding = torch.nn.Embedding(input_dim, embedding_dim)
         self.lstm = torch.nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
         self.linear = torch.nn.Linear(hidden_dim, output_size)
         self.softmax = torch.nn.Softmax(dim=1)
@@ -30,74 +49,18 @@ class Gerador(torch.nn.Module):
         output = self.softmax(output)
         return output, hidden
 
-print('Definindo a arquitetura do modelo discriminador')
-class Discriminador(torch.nn.Module):
-    def __init__(self, vocab_size, embedding_dim, hidden_dim):
-        super(Discriminador, self).__init__()
-        self.embedding = torch.nn.Embedding(vocab_size, embedding_dim)
-        self.lstm = torch.nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
-        self.pooling = torch.nn.AdaptiveAvgPool1d(1)
-        self.classifier = torch.nn.Linear(hidden_dim, 1)
-        self.sigmoid = torch.nn.Sigmoid()
-
-    def forward(self, input, hidden=None):
-        embedded = self.embedding(input)
-        output, hidden = self.lstm(embedded, hidden)
-        output = self.pooling(output.transpose(1, 2)).squeeze(2)
-        output = self.classifier(output)
-        output = self.sigmoid(output)
-        return output, hidden
-
-class TextDataset(Dataset):
-    def __init__(self, textos, rotulos):
-        self.textos = textos
-        self.rotulos = rotulos
-
-    def __len__(self):
-        return len(self.textos)
-
-    def __getitem__(self, idx):
-        return self.textos[idx], self.rotulos[idx]
-
-class GeneratorOutputDataset(Dataset):
-    def __init__(self, generator, noise_dim, num_samples, noise_samples, text_len):
-        self.generator = generator
-        self.noise_dim = noise_dim
-        self.num_samples = num_samples
-        self.noise_samples = noise_samples
-        self.text_len = text_len  # Adicione o tamanho do texto real aqui
-
-    def __len__(self):
-        return self.num_samples
-
-    def __getitem__(self, idx):
-        sample = torch.zeros((self.noise_samples, self.text_len), dtype=torch.long)
-        noise = torch.randint(0, self.noise_dim, (self.noise_samples, self.noise_dim))
-        text_chunk, _ = self.generator(noise)
-        if self.text_len <= self.noise_dim:
-            # Se o tamanho do texto for menor ou igual a noise_dim, use apenas a parte necessária do texto gerado
-            sample[:, :self.text_len] = torch.argmax(text_chunk, dim=-1)[:, :self.text_len]
-        else:
-            # Se o tamanho do texto for maior que noise_dim, use o código anterior para gerar o texto em pedaços
-            for i in range(self.text_len // self.noise_dim):
-                sample[:, i*self.noise_dim:(i+1)*self.noise_dim] = torch.argmax(text_chunk, dim=-1)
-            if self.text_len % self.noise_dim != 0:
-                noise = torch.randint(0, self.noise_dim, (self.noise_samples, self.noise_dim))
-                text_chunk, _ = self.generator(noise)
-                start_index = (self.text_len // self.noise_dim) * self.noise_dim
-                sample[:, start_index:] = torch.argmax(text_chunk, dim=-1)[:, :self.text_len-start_index]
-        return sample
-
 def carregar_vocabulario(pasta, types):
     palavra_para_numero = {}
     numero_para_palavra = {}
     textos_reais = {}
 
     for tipo in types:
-        print(f'Carregando os arquivos {tipo[1:]}.pt')
+        if verbose == 'on':
+           print(f'Carregando os arquivos {tipo[1:]}.pt')
         textos_reais[tipo] = torch.load(os.path.join(pasta, tipo[1:] + '.pt'))
 
-        print(f'Carregando o vocabulário para o tipo {tipo}')
+        if verbose == 'on':
+            print(f'Carregando o vocabulário para o tipo {tipo}')
         # Correção na formatação do nome do arquivo JSON
         with open(os.path.join(pasta, f'vocabulario{tipo}.json'), 'r') as f:
             palavra_para_numero[tipo] = json.load(f)
@@ -106,31 +69,66 @@ def carregar_vocabulario(pasta, types):
 
     return palavra_para_numero, numero_para_palavra, textos_reais
 
-print('Definindo o Decoder')
+if args.verbose == 'on':
+    print('Definindo o Encoder')
+def encoder(texto, tipo, palavra_para_numero):
+    return [palavra_para_numero[tipo].get(palavra, 0) for palavra in nltk.word_tokenize(texto)]
+
+if verbose == 'on':
+   print('Definindo o Decoder')
 def decoder(texto_codificado, tipo, numero_para_palavra):
        # Decodificar o texto usando o dicionário numero_para_palavra do tipo de arquivo correspondente
       return ' '.join([numero_para_palavra[tipo].get(numero, '<UNK>') for numero in texto_codificado])
 
 palavra_para_numero, numero_para_palavra,textos_reais = carregar_vocabulario(pasta, types)
 
-# Carregando o modelo gerador
+if verbose == 'on':
+    print('Carregando o modelo gerador')
 gerador = torch.load(gerador_path)
-# Criando o dataset para as saídas do gerador
-dataset_gerador = GeneratorOutputDataset(gerador, noise_dim, num_samples, noise_samples,max_length)
-loader_gerador = DataLoader(dataset_gerador, batch_size=1, shuffle=True)
 
-def gerar_texto_falso(gerador, noise_dim, num_samples,noise_samples, tipo):
- 
+def gerar_texto_falso(gerador, quantidade, tipo):
     # Gerando textos falsos
     with torch.no_grad():
         print(f'Colocando o modelo em modo de avaliação.')
         gerador.eval()
-        for textos_falsos in loader_gerador:
-            print('Saida Gerador: ',textos_falsos.shape)
-            for amostra in textos_falsos:
-                for ruido in amostra:
-                    falso = decoder(ruido.tolist(),tipo,numero_para_palavra)
-                    print('Texto falso gerado: ', falso)
+        epoca = 1
+        while epoca <= quantidade:
+           noise_dim = torch.randint(40,253, (1,))
+           if modo == 'manual': 
+              prompt = input(f'> ')
+              if len(prompt.strip())==0:
+                  prompt = torch.randint(0,len(numero_para_palavra[tipo]),(1,noise_dim))
+              else:
+                  prompt = encoder(prompt,tipo,palavra_para_numero)
+                  prompt = torch.tensor(prompt).unsqueeze(0)
+                  if prompt.size(1) < noise_dim:
+                      noise = torch.randint(0,len(numero_para_palavra[tipo]),(1,noise_dim - prompt.size(1)))
+                      for noise_samp in noise:
+                          prompt = pad_sequence([torch.cat((t, noise_samp)) for t in prompt], batch_first=True)
+           elif modo == 'auto':
+                #modo 'auto'
+               prompt = torch.randint(0,len(numero_para_palavra[tipo]),(1,noise_dim))
+               decoded = decoder(prompt[0].tolist(),tipo,numero_para_palavra)
+               if args.verbose == 'on':
+                   print(f'Prompt aleatorio: {decoded}')
 
-# Gerando o texto falso
-gerar_texto_falso(gerador, noise_dim, num_samples, noise_samples, tipo)
+           lprompt = prompt.to(torch.int64)
+           saida,lstm = gerador(lprompt)
+           print(f'{saida.shape}')
+           if debug == 'on':
+              print(f'Saida Bruta do Gerador: {saida}')
+              print(f'Estado oculto do LSTM - Memória do Gerador: {lstm}')
+           if verbose == 'on':
+               texto_falso_max = torch.argmax(saida, dim=-1)
+               texto_falso_max = texto_falso_max.to(torch.int64)
+               saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
+               print(f'Saida do Gerador: {saida}')
+           epoca = epoca + 1
+
+for tipo in types:
+     # Gerando o texto falso
+     gerar_texto_falso(gerador, quantidade, tipo)
+
+agora = datetime.datetime.now()
+fim = agora.strftime("%H:%M:%S_%d-%m-%Y")
+print(f'Início da sessão de teste do gerador em {inicio} com fim em {fim}')
