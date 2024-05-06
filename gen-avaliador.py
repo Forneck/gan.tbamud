@@ -156,4 +156,156 @@ for tipo in types:
  
     min_length[tipo] = min(len(texto) for texto in textos_unpad)
 
+def solicitar_pontuacoes():
+    criterios = {
+        'Qualidade': 'Avalie se o texto parece real',
+    }
+    pontuacoes = {}
+    for criterio, descricao in criterios.items():
+        while True:
+            print(f'{criterio}: {descricao}')
+            pontuacao = input(f'Insira a pontuação para {criterio} (0-1 ou 9 para sair): ')
+            try:
+                pontuacao = int(pontuacao)
+                if 0 <= pontuacao <= 1 or pontuacao == 9:
+                    pontuacoes[criterio] = pontuacao
+                    break
+                else:
+                    print('Valor fora do intervalo. Por favor, insira um valor entre 0 e 1.')
+                    
+                    if pontuacao > 1:
+                        pontuacoes[criterio] = 1
+                    elif pontuacao < 0:
+                        pontuacoes[criterio] = 0
+                    break
+            except ValueError:
+                print('Entrada inválida. Por favor, insira um número inteiro entre 0 e 1')
+    return pontuacoes
 
+if args.verbose == 'on':
+    print('Definindo o objetivo de aprendizado')
+    criterio_gerador = torch.nn.MSELoss()
+    criterio_avaliador = torch.nn.MSELoss()
+
+#Criando os modelos gerador e avaliador para cada tipo
+gerador = {}
+avaliador = {}
+for tipo in types:
+    # Caminhos dos modelos
+    output_size = max_length[tipo]
+    gerador_path = os.path.expanduser('gerador_' + tipo[1:] + '.pt')
+    avaliador_path = os.path.expanderuser('avaliador_' + tipo[1:] + '.pt')
+    
+    print('Verificando se o gerador existe para o tipo: ', tipo[1:])
+    if os.path.exists(gerador_path):
+        print('Carregar o gerador')
+        gerador[tipo] = torch.load(gerador_path)
+    else:
+        print('Criar novo gerador')
+        gerador[tipo] = Gerador(len(numero_para_palavra[tipo]),256, 512,len(numero_para_palavra[tipo]))
+        #embbeding 256, hidden 512
+
+    print('Verificando se o avaliador existe para o tipo: ', tipo[1:])
+    if os.path.exists(avaliador_path):
+        print('Carregar o avaliador')
+        avaliador[tipo] = torch.load(avaliador_path)
+    else:
+        print('Criar novo avaliador')
+        avaliador[tipo] = Avaliador(len(numero_para_palavra[tipo]),256, 512,num_classes, num_numeros)
+
+# Criando os otimizadores para cada modelo
+otimizador_gerador = {}
+scheduler_gerador = {}
+otimizador_avaliador = {}
+scheduler_avaliador = {}
+for tipo in types:
+    otimizador_gerador[tipo] = torch.optim.Adam(gerador[tipo].parameters(), lr=taxa_aprendizado_gerador)
+    scheduler_gerador[tipo] = torch.optim.lr_scheduler.ExponentialLR(otimizador_gerador[tipo], gamma=0.1)
+    otimizador_avaliador[tipo] = torch.optim.Adam(avaliador[tipo].parameters(), lr=taxa_aprendizado_gerador)
+    scheduler_avaliador[tipo] = torch.optim.lr_scheduler.ExponentialLR(otimizador_avaliador[tipo], gamma=0.1)
+
+#print(f'Pesos antes do treinamento: {gerador[tipo].state_dict()}')
+peso_inicio = {}
+print('Iniciando o treinamento')
+for tipo in types:
+        peso_inicio[tipo] = gerador[tipo].state_dict()
+        print(f'Tipo {tipo} - Treinamento')
+        perda_gerador  = 0
+        epoca = 1
+        while epoca <= num_epocas:
+           gerador[tipo].train()
+           print(f'Epoca {epoca}/{num_epocas}')
+           textos_reais[tipo].requires_grad_()
+           rand = torch.randint(0,len(textos_reais[tipo]),(1,))
+           prompt = textos_reais[tipo][rand]
+           lprompt = prompt.to(torch.int64)
+           for texto in lprompt:
+                  upad = []
+                  texto = texto.tolist()
+                  while texto[-1] == 0:
+                      texto.pop()
+                  if debug == 'on':
+                     print(texto)
+                  uprompt = torch.tensor(texto)
+           prompt_unpad = uprompt.to(torch.int64)
+           esp_size = len(uprompt)
+           iprompt = uprompt.to(torch.int64)
+           decoded = decoder(iprompt.tolist(), tipo, numero_para_palavra)
+           if args.verbose == 'on':
+              print(f'Esperado: {decoded}')
+           # Gere um novo texto
+           print(f'Gerando um novo texto no modo: {modo} de tamanho {esp_size}')
+           if modo == 'manual':
+              prompt = input(f'> ')
+              if len(prompt.strip())==0:
+                  prompt = torch.randint(0,len(numero_para_palavra[tipo]),(1,esp_size))
+                  print('Usando prompt aleatorio')
+                  #if noise_dim < esp_size:
+                     #prompt = pad_sequence([torch.cat((t, torch.ones(esp_size - len(t), dtype=torch.int64))) for t in prompt], batch_first=True)
+                  #prompt = pad_sequence([torch.cat((t,torch.zeros(max_length[tipo] - len(t), dtype=torch.int64))) for t in prompt], batch_first=True)
+              else:
+                  prompt = encoder(prompt,tipo,palavra_para_numero)
+                  prompt = torch.tensor(prompt).unsqueeze(0)
+                  prompt = pad_sequence([torch.cat((t, torch.ones(esp_size - len(t), dtype = torch.int64))) for t in prompt], batch_first=True)
+                  #prompt = pad_sequence([torch.cat((t,torch.zeros(max_length[tipo] - len(t), dtype=torch.int64))) for t in prompt], batch_first=True)
+           elif modo == 'auto':
+               prompt = torch.randint(0,len(numero_para_palavra[tipo]),(1,esp_size))
+               #prompt = pad_sequence([torch.cat((t, torch.zeros(max_length[tipo] - len(t), dtype = torch.int64))) for t in prompt], batch_first = True)
+               decoded = decoder(prompt[0].tolist(),tipo,numero_para_palavra)
+               if args.verbose == 'on':
+                   print(f'Prompt aleatorio: {decoded}')
+           else:
+               prompt = uprompt
+           
+           lprompt = prompt.to(torch.int64)
+           texto_falso,_ = gerador[tipo](lprompt)
+
+           prompt_hot = F.one_hot(prompt_unpad,len(numero_para_palavra[tipo])).float()
+           if treino == 'rel':
+              texto_falso = torch.log(texto_falso) 
+           prompt_hot.requires_grad_()
+           prompt_hot.retain_grad()
+           texto_falso.requires_grad_()
+           texto_falso.retain_grad()
+           texto_falso = texto_falso.squeeze(0)
+           print(f'Forma do texto falso {texto_falso.shape} e do Prompt 1-hot: {prompt_hot.shape}')
+           perda_gerador = criterio_gerador(texto_falso, prompt_hot)
+           perda_gerador.backward()
+           # Atualize os parâmetros do gerador
+           if debug == 'on':
+               print(f'Gradiente do gerador: {texto_falso.grad}\n Gradiente do esperado: {prompt_hot.grad}')
+               #Imprimir os gradientes
+               for name, param in gerador[tipo].named_parameters():
+                   if param.requires_grad:
+                      print(name, param.grad)
+           
+           otimizador_gerador[tipo].step()
+           #scheduler_gerador[tipo].step()
+           otimizador_gerador[tipo].zero_grad()
+           if args.verbose == 'on':
+               texto_falso_max = torch.argmax(texto_falso, dim=-1)
+               texto_falso_max = texto_falso_max.to(torch.int64)
+               saida = decoder(texto_falso_max.tolist(),tipo,numero_para_palavra)
+               print(f'\nSaida do Gerador: {saida}')
+
+           epoca = epoca + 1
