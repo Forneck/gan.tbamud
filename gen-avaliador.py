@@ -34,6 +34,20 @@ parser.add_argument('--debug', choices=['on', 'off'], default='off', help='Debug
 parser.add_argument('--treino', choices=['abs','rel'], default='rel', help='Treino Absoluto ou Relativo')
 args = parser.parse_args()
 
+num_classes = 2 #0 e 1
+num_numeros = 18 #quantidade de campos numericos
+if args.verbose == 'on':
+    print('Definindo os parâmetros de treinamento')
+num_epocas = args.num_epocas
+taxa_aprendizado_gerador = 0.01 #inicial 0.0001
+noise_dim = args.noise_dim # entre 1 e 100
+noise_samples = 1
+debug = args.debug
+modo = args.modo
+num_samples = args.num_samples #numero de amostras dentro da mesma época
+treino = args.treino
+textos_falsos = {}
+
 if args.verbose == 'on':
     print('Definindo a arquitetura do modelo gerador')
 class Gerador(torch.nn.Module):
@@ -123,17 +137,6 @@ def carregar_vocabulario(pasta, types):
             numero_para_palavra[tipo] = {i: palavra for palavra, i in palavra_para_numero[tipo].items()}
 
     return palavra_para_numero, numero_para_palavra, textos_reais
-if args.verbose == 'on':
-    print('Definindo os parâmetros de treinamento')
-num_epocas = args.num_epocas 
-taxa_aprendizado_gerador = 0.01 #inicial 0.0001
-noise_dim = args.noise_dim # entre 1 e 100
-noise_samples = 1
-debug = args.debug
-modo = args.modo
-num_samples = args.num_samples #numero de amostras dentro da mesma época
-treino = args.treino
-textos_falsos = {}
 
 palavra_para_numero, numero_para_palavra,textos_reais = carregar_vocabulario(pasta, types)
 

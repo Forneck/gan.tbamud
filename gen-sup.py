@@ -43,9 +43,9 @@ parser.add_argument('--num_samples', type=int, default=1, help='Número de amost
 parser.add_argument('--noise_dim', type=limit_noise_dim, default=100, help='Dimensão do ruído para o gerador')
 parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador')
 parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais informações de saída')
-parser.add_argument('--modo', choices=['auto','manual', 'real'],default='real', help='Modo do Prompt: auto, manual ou real')
+parser.add_argument('--modo', choices=['auto','manual', 'real'],default='auto', help='Modo do Prompt: auto, manual ou real')
 parser.add_argument('--debug', choices=['on', 'off'], default='off', help='Debug Mode')
-parser.add_argument('--treino', choices=['abs','rel'], default='rel', help='Treino Absoluto ou Relativo')
+parser.add_argument('--treino', choices=['abs','rel'], default='abs', help='Treino Absoluto ou Relativo')
 args = parser.parse_args()
 
 if args.verbose == 'on':
@@ -166,11 +166,11 @@ def carregar_vocabulario(pasta, types):
 if args.verbose == 'on':
     print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
-taxa_aprendizado_gerador = 0.01 #inicial 0.0001
 noise_dim = args.noise_dim # entre 1 e 100
 noise_samples = 1
 debug = args.debug
 modo = args.modo
+taxa_aprendizado_gerador = 0.0002 # > 0.01 gerador da output 0
 num_samples = args.num_samples #numero de amostras dentro da mesma época
 treino = args.treino
 textos_falsos = {}
@@ -265,6 +265,7 @@ for tipo in types:
         epoca = 1
         while epoca <= num_epocas:
            gerador[tipo].train()
+           print(f'Epoca {epoca}/{num_epocas}')
            textos_reais[tipo].requires_grad_()
            rand = torch.randint(0,len(textos_reais[tipo]),(1,))
            prompt = textos_reais[tipo][rand]
@@ -318,8 +319,7 @@ for tipo in types:
            texto_falso.requires_grad_()
            texto_falso.retain_grad()
            texto_falso = texto_falso.squeeze(0)
-           if debug == 'on':
-              print(f'Forma do texto falso {texto_falso.shape} e do Prompt 1-hot: {prompt_hot.shape}')
+           print(f'Forma do texto falso {texto_falso.shape} e do Prompt 1-hot: {prompt_hot.shape}')
            perda_gerador = criterio_gerador(texto_falso, prompt_hot)
            perda_gerador.backward()
            # Atualize os parâmetros do gerador
@@ -337,7 +337,7 @@ for tipo in types:
                texto_falso_max = torch.argmax(texto_falso, dim=-1)
                texto_falso_max = texto_falso_max.to(torch.int64)
                saida = decoder(texto_falso_max.tolist(),tipo,numero_para_palavra)
-               print(f'Saida do Gerador: {saida}')
+               print(f'\nSaida do Gerador: {saida}')
 
            epoca = epoca + 1
            
