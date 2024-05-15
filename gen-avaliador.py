@@ -26,7 +26,7 @@ parser.add_argument('--save_mode', choices=['local', 'nuvem'], default='local', 
 parser.add_argument('--save_time', choices=['epoch', 'session'], default='epoch', help='Escolha quando salvar o modelo')
 parser.add_argument('--num_epocas', type=int, default=100, help='Número de épocas para treinamento')
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
-parser.add_argument('--noise_dim', type=limit_noise_dim, default=100, help='Dimensão do ruído para o gerador')
+parser.add_argument('--noise_dim', type=int, default=100, help='Dimensão do ruído para o gerador')
 parser.add_argument('--noise_samples', type=int,default=1, help='Número de amostras de ruído para o gerador')
 parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais informações de saída')
 parser.add_argument('--modo', choices=['auto','manual', 'real'],default='real', help='Modo do Prompt: auto, manual ou real')
@@ -67,17 +67,17 @@ class Gerador(torch.nn.Module):
 
 if args.verbose == 'on':
     print('Definindo a arquitetura do modelo avaliador')
-class Avaliador(nn.Module):
+class Avaliador(torch.nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_dim, num_classes, num_numeros):
         super(Avaliador, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embedding_dim)
-        self.conv1d = nn.Conv1d(embedding_dim, hidden_dim, kernel_size=3, padding=1)
-        self.lstm = nn.LSTM(hidden_dim, hidden_dim, batch_first=True)
-        self.attention = nn.Linear(hidden_dim, 1)
-        self.fc_texto = nn.Linear(hidden_dim, num_classes)
-        self.fc_numeros = nn.Linear(num_numeros, num_classes)
-        self.fc_final = nn.Linear(num_classes * 2, num_classes)
-        self.softmax = nn.Softmax(dim=1)
+        self.embedding = torch.nn.Embedding(vocab_size, embedding_dim)
+        self.conv1d = torch.nn.Conv1d(embedding_dim, hidden_dim, kernel_size=3, padding=1)
+        self.lstm = torch.nn.LSTM(hidden_dim, hidden_dim, batch_first=True)
+        self.attention = torch.nn.Linear(hidden_dim, 1)
+        self.fc_texto = torch.nn.Linear(hidden_dim, num_classes)
+        self.fc_numeros = torch.nn.Linear(num_numeros, num_classes)
+        self.fc_final = torch.nn.Linear(num_classes * 2, num_classes)
+        self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, texto, numeros, hidden=None):
         # Processamento do texto
@@ -194,7 +194,7 @@ for tipo in types:
     # Caminhos dos modelos
     output_size = max_length[tipo]
     gerador_path = os.path.expanduser('gerador_' + tipo[1:] + '.pt')
-    avaliador_path = os.path.expanderuser('avaliador_' + tipo[1:] + '.pt')
+    avaliador_path = os.path.expanduser('avaliador_' + tipo[1:] + '.pt')
     
     print('Verificando se o gerador existe para o tipo: ', tipo[1:])
     if os.path.exists(gerador_path):
@@ -308,4 +308,30 @@ for tipo in types:
                saida = decoder(texto_falso_max.tolist(),tipo,numero_para_palavra)
                print(f'\nSaida do Gerador: {saida}')
 
+           saida_real,_ = avaliador[tipo](iprompt,18)
+           saida_gerada,_ = avaliador[tipo](texto_falso,0)
+           print(f'Saida do Avaliador real: {saida_real}')
+           pontuacao = 1
+           pontuacao.requires_grad_()
+           perda_real = criterio_avaliador(saida_real, pontuacao)
+           print(f'Perda real: {perda_real}')
+           perda_real.backward()
+           otimizador_avaliador[tipo].step()
+           otimizador_avaliador[tipo].zero_grad()
+           pontuacao = solicitar_pontuacoes()
+           print(f'Saida do Avaliador gerado: {saida_gerado}')
+           pontuacao.requires_grad_()
+           perda_gerado = criterio_avaliador(saida_gerado, pontuacao)
+           print(f'Perda gerado: {perda_gerado}')
+           perda_geradp.backward()
+           otimizador_avaliador[tipo].step()
+           otimizador_avaliador[tipo].zero_grad()
            epoca = epoca + 1
+
+        print('Salvando Modelos')
+        torch.save(avaliador[tipo], os.path.expanduser('avaliador_' + tipo[1:] + '.pt'))
+        torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
+
+agora = datetime.datetime.now()
+fim = agora.strftime("%H:%M:%S_%d-%m-%Y")
+print(f'Início da sessão em {timestamp} com fim em {fim}')

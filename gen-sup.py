@@ -8,9 +8,19 @@ import pickle
 import json
 import collections
 import datetime
+import re
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.tag import pos_tag
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
+# Baixar as stopwords
+nltk.download('punkt')
+nltk.download('averaged_perceptron_tagger')
+nltk.download('stopwords')
 print('Iniciando treinamento de qualidade do Gerador')
 agora = datetime.datetime.now()
 timestamp = agora.strftime("%H:%M:%S_%d-%m-%Y")
@@ -297,7 +307,12 @@ for tipo in types:
               else:
                   prompt = encoder(prompt,tipo,palavra_para_numero)
                   prompt = torch.tensor(prompt).unsqueeze(0)
-                  prompt = pad_sequence([torch.cat((t, torch.ones(esp_size - len(t), dtype = torch.int64))) for t in prompt], batch_first=True)
+                  fill_size = esp_size - prompt.size(1)
+                  filler = torch.randint(0,len(numero_para_palavra[tipo]),(1,fill_size))
+                  prompt = prompt.squeeze(0)
+                  filler = filler.squeeze(0)
+                  prompt = torch.cat((prompt, filler), dim=0)
+                  prompt = prompt.unsqueeze(0)
                   #prompt = pad_sequence([torch.cat((t,torch.zeros(max_length[tipo] - len(t), dtype=torch.int64))) for t in prompt], batch_first=True)
            elif modo == 'auto':
                prompt = torch.randint(0,len(numero_para_palavra[tipo]),(1,esp_size))
@@ -306,7 +321,29 @@ for tipo in types:
                if args.verbose == 'on':
                    print(f'Prompt aleatorio: {decoded}')
            else:
-               prompt = uprompt
+               decoded = re.sub(r'\b\d+\b', '', decoded)
+               words = nltk.word_tokenize(decoded)
+               # Remover stopwords
+               stop_words = set(stopwords.words('english'))
+               words = [word for word in words if word.casefold() not in stop_words and word != '~']
+               # Manter apenas substantivos e nomes próprios (NN, NNP)
+               tagged = pos_tag(words)
+               #words = [word for word, pos in tagged if pos in ['NN', 'NNP']]
+               words = [word for word, pos in tagged if pos in ['NN', 'NNP', 'VB', 'VBD', 'VBG', 'VBN', 'VBP', 'VBZ', 'JJ', 'JJR', 'JJS']] #nomes, verbos e adjetivos
+               #Remover palavras repetidas
+               seen = set()
+               words = [word for word in words if not (word in seen or seen.add(word))]
+               # Juntar as palavras de volta em uma string
+               decoded = ' '.join(words)
+               prompt = encoder(decoded, tipo, palavra_para_numero)
+               print(f'Prompt simplificado: {decoded}')
+               prompt = torch.tensor(prompt).unsqueeze(0)
+               fill_size = esp_size - prompt.size(1)
+               filler = torch.randint(0,len(numero_para_palavra[tipo]),(1,fill_size))
+               prompt = prompt.squeeze(0)
+               filler = filler.squeeze(0)
+               prompt = torch.cat((prompt, filler), dim=0)
+               prompt = prompt.unsqueeze(0)
            
            lprompt = prompt.to(torch.int64)
            texto_falso,_ = gerador[tipo](lprompt)
