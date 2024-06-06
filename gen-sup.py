@@ -18,9 +18,9 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, DataLoader
 import torch.nn.functional as F
 # Baixar as stopwords
-nltk.download('punkt')
-nltk.download('averaged_perceptron_tagger')
-nltk.download('stopwords')
+#nltk.download('punkt')
+#nltk.download('averaged_perceptron_tagger')
+#nltk.download('stopwords')
 print('Iniciando treinamento de qualidade do Gerador')
 agora = datetime.datetime.now()
 timestamp = agora.strftime("%H:%M:%S_%d-%m-%Y")
@@ -56,6 +56,7 @@ parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais
 parser.add_argument('--modo', choices=['auto','manual', 'real'],default='auto', help='Modo do Prompt: auto, manual ou real')
 parser.add_argument('--debug', choices=['on', 'off'], default='off', help='Debug Mode')
 parser.add_argument('--treino', choices=['abs','rel'], default='abs', help='Treino Absoluto ou Relativo')
+parser.add_argument('--valor', choices=['auto','seq'], default='seq', help='Valor é automatico ou sequencial')
 args = parser.parse_args()
 
 if args.verbose == 'on':
@@ -180,11 +181,11 @@ noise_dim = args.noise_dim # entre 1 e 100
 noise_samples = 1
 debug = args.debug
 modo = args.modo
-taxa_aprendizado_gerador = 0.0002 # > 0.01 gerador da output 0
+taxa_aprendizado_gerador = 0.01 # > 0.01 gerador da output 0
 num_samples = args.num_samples #numero de amostras dentro da mesma época
 treino = args.treino
 textos_falsos = {}
-
+valor = args.valor
 palavra_para_numero, numero_para_palavra,textos_reais = carregar_vocabulario(pasta, types)
 
 max_length = {}
@@ -277,7 +278,13 @@ for tipo in types:
            gerador[tipo].train()
            print(f'Epoca {epoca}/{num_epocas}')
            textos_reais[tipo].requires_grad_()
-           rand = torch.randint(0,len(textos_reais[tipo]),(1,))
+           if valor == 'auto':
+             if 'rand' not in globals():
+                rand = torch.randint(0,len(textos_reais[tipo]),(1,))
+           else:
+              seq = epoca
+              rand = torch.tensor([seq])
+               #print(f'{rand.shape} e {rand}')
            prompt = textos_reais[tipo][rand]
            lprompt = prompt.to(torch.int64)
            for texto in lprompt:
