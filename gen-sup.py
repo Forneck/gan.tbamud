@@ -56,7 +56,7 @@ parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais
 parser.add_argument('--modo', choices=['auto','manual', 'real'],default='auto', help='Modo do Prompt: auto, manual ou real')
 parser.add_argument('--debug', choices=['on', 'off'], default='off', help='Debug Mode')
 parser.add_argument('--treino', choices=['abs','rel'], default='abs', help='Treino Absoluto ou Relativo')
-parser.add_argument('--valor', choices=['auto','seq'], default='seq', help='Valor é automatico ou sequencial')
+parser.add_argument('--valor', choices=['auto','seq', 'cont'], default='seq', help='Valor é automatico ou sequencial')
 args = parser.parse_args()
 
 if args.verbose == 'on':
@@ -281,9 +281,11 @@ for tipo in types:
            if valor == 'auto':
              if 'rand' not in globals():
                 rand = torch.randint(0,len(textos_reais[tipo]),(1,))
-           else:
+           elif valor == 'seq':
               seq = epoca
               rand = torch.tensor([seq])
+           else:
+               rand = torch.tensor([1])
                #print(f'{rand.shape} e {rand}')
            prompt = textos_reais[tipo][rand]
            lprompt = prompt.to(torch.int64)
@@ -375,7 +377,7 @@ for tipo in types:
                       print(name, param.grad)
            
            otimizador_gerador[tipo].step()
-           #scheduler_gerador[tipo].step()
+           scheduler_gerador[tipo].step()
            otimizador_gerador[tipo].zero_grad()
            if args.verbose == 'on':
                texto_falso_max = torch.argmax(texto_falso, dim=-1)
