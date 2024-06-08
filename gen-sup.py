@@ -282,8 +282,24 @@ for tipo in types:
              if 'rand' not in globals():
                 rand = torch.randint(0,len(textos_reais[tipo]),(1,))
            elif valor == 'seq':
-              seq = epoca
+              max_len = textos_reais[tipo].size(0) - 1
+
+              # Carregar o valor de seq do arquivo
+              try:
+                 with open('seq.json', 'r') as f:
+                      seq = json.load(f)
+              except FileNotFoundError:
+                 seq = 1
+
+              if seq > max_len:
+                seq = seq % max_len
+
               rand = torch.tensor([seq])
+              seq = seq + 1
+              # Salvar o valor de seq no arquivo
+              with open('seq.json', 'w') as f:
+                 json.dump(seq, f)
+
            else:
                rand = torch.tensor([1])
                #print(f'{rand.shape} e {rand}')
@@ -377,7 +393,7 @@ for tipo in types:
                       print(name, param.grad)
            
            otimizador_gerador[tipo].step()
-           scheduler_gerador[tipo].step()
+           #scheduler_gerador[tipo].step()
            otimizador_gerador[tipo].zero_grad()
            if args.verbose == 'on':
                texto_falso_max = torch.argmax(texto_falso, dim=-1)
