@@ -7,6 +7,7 @@ import json
 
 # Pasta onde estão as subpastas .wld, .obj, .mob, .zon, .qst, .shp e .trg
 pasta = os.path.expanduser('~/mud/tba2024/lib/world')
+#pasta = os.path.expanduser('~/gan/v1/enc')
 
 types = ['.mob']
 
@@ -29,7 +30,8 @@ def carregar_vocabulario(pasta, tipo):
     palavra_para_numero = {palavra: i for i, palavra in enumerate(sorted(vocab))}
     with open(f'vocabulario{tipo}.json', 'w') as f:
         json.dump(palavra_para_numero, f)
-    return palavra_para_numero
+    numero_para_palavra = {i: palavra for palavra, i in palavra_para_numero.items()}
+    return palavra_para_numero, numero_para_palavra
 
 # Função para dividir o texto em sessões
 def dividir_em_sessoes(texto):
@@ -43,10 +45,13 @@ def dividir_em_sessoes(texto):
 def encoder(texto, palavra_para_numero):
     return [palavra_para_numero.get(palavra, 0) for palavra in nltk.word_tokenize(texto)]  # usando o nltk para tokenizar
 
+def decoder(texto_codificado,  numero_para_palavra):
+      return ' '.join([numero_para_palavra.get(numero, '<UNK>') for numero in texto_codificado])
+
 # Lendo, construindo vocabulário e codificando cada arquivo por tipo
 for tipo in types:
     print(f"Processando o tipo de arquivo: {tipo}")
-    palavra_para_numero = carregar_vocabulario(pasta, tipo)
+    palavra_para_numero, numero_para_palavra = carregar_vocabulario(pasta, tipo)
     # Validação do vocabulário
     print(f"Amostra do vocabulário para o tipo {tipo}: {list(palavra_para_numero.items())[:10]}")
     dados_codificados = []
@@ -59,11 +64,22 @@ for tipo in types:
             sessoes = dividir_em_sessoes(texto)
             for sessao in sessoes:
                 texto_codificado = encoder(sessao, palavra_para_numero)
+                if len(sessao) < 2:
+                    print(f"Sessao curta: {sessao}")
+                if not sessao.strip():
+                    print(f'Sessao vazia: {sessao}')
+                if 0 in texto_codificado:
+                    decoded = decoder(texto_codificado,numero_para_palavra)
+                    print(f'\nPalavra desconhecida em: {decoded}')
+                    print(f'Original: {sessao}')
                 # Convertendo para torch.float32
                 texto_codificado = torch.tensor(texto_codificado, dtype=torch.float32)
                 dados_codificados.append(texto_codificado)
-                
+    
+    #print(f'{dados_codificados}')
     # Padronizando o tamanho dos textos codificados
     dados_codificados = torch.nn.utils.rnn.pad_sequence(dados_codificados, batch_first=True)
     # Salvando os dados codificados
     torch.save(dados_codificados, os.path.expanduser(f'~/mud/gan/v1/{tipo[1:]}.pt'))
+
+
