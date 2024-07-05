@@ -50,7 +50,7 @@ parser.add_argument('--save_mode', choices=['local', 'nuvem'], default='local', 
 parser.add_argument('--save_time', choices=['epoch', 'session'], default='session', help='Escolha quando salvar o modelo')
 parser.add_argument('--num_epocas', type=int, default=50, help='Número de épocas para treinamento')
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
-parser.add_argument('--rep', type=int, default=10, help='Quantidade de repetições')
+parser.add_argument('--rep', type=int, default=1, help='Quantidade de repetições')
 parser.add_argument('--lstm', choices=['reset', 'normal','print'],default='normal', help='Estado do LSTM')
 parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais informações de saída')
 parser.add_argument('--modo', choices=['auto','manual', 'curto', 'longo'],default='longo', help='Modo do Prompt: auto, manual ou real')
@@ -148,6 +148,7 @@ textos_falsos = {}
 valor = args.valor
 palavra_para_numero, numero_para_palavra,textos_reais = carregar_vocabulario(pasta, types)
 output = args.output
+aprendeu = 0
 
 max_length = {}
 min_length = {}
@@ -254,6 +255,8 @@ for tipo in types:
                 seq = seq % max_len
                 #seq = 0
                 print(f'\n\nREINICIANDO DO INICIO DOS TEXTOS!!!\n')
+                rep = rep + 1
+                print(f'\nAUMENTANDO AS REPETIÇÕES\n')
                 if modo == 'curto':
                     modo = 'longo'
                     output = 'next'
@@ -449,6 +452,8 @@ for tipo in types:
            perda_gerador = criterio_gerador(texto_falso, prompt_hot)
            if perda_gerador == 0:
                seq = seq + 1
+               aprendeu = 1
+
            perda_gerador.backward()
            # Atualize os parâmetros do gerador
            if debug == 'on':
@@ -459,7 +464,12 @@ for tipo in types:
                       print(name, param.grad)
            
            otimizador_gerador[tipo].step()
-           #scheduler_gerador[tipo].step()
+           
+           if aprendeu == 1:
+              print(f'\nReduzindo a taxa de aprendizagem em 1% \n\n')
+              scheduler_gerador[tipo].step()
+              aprendeu = 0
+
            otimizador_gerador[tipo].zero_grad()
            
            epoca = epoca + 1
