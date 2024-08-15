@@ -36,6 +36,11 @@ estatisticas = {
     }
 token = 'HF-AUTH-TOKEN'
 
+config = {
+    'seq',
+    'rep'
+}
+
 def limit_noise_dim(value):
     ivalue = int(value)
     if ivalue > 253:
@@ -48,9 +53,9 @@ def limit_noise_dim(value):
 parser = argparse.ArgumentParser()
 parser.add_argument('--save_mode', choices=['local', 'nuvem'], default='local', help='Escolha onde salvar o modelo')
 parser.add_argument('--save_time', choices=['epoch', 'session'], default='session', help='Escolha quando salvar o modelo')
-parser.add_argument('--num_epocas', type=int, default=50, help='Número de épocas para treinamento')
-parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
-parser.add_argument('--rep', type=int, default=1, help='Quantidade de repetições')
+parser.add_argument('--num_epocas', type=int, default=1200, help='Número de épocas para treinamento')
+parser.add_argument('--num_samples', type=int, default=2, help='Número de amostras para cada época')
+parser.add_argument('--rep', type=int, default=2, help='Quantidade de repetições')
 parser.add_argument('--lstm', choices=['reset', 'normal','print'],default='normal', help='Estado do LSTM')
 parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais informações de saída')
 parser.add_argument('--modo', choices=['auto','manual', 'curto', 'longo'],default='longo', help='Modo do Prompt: auto, manual ou real')
@@ -65,20 +70,29 @@ smax = args.smax
 if args.verbose == 'on':
     print('Definindo a arquitetura do modelo gerador')
 class Gerador(torch.nn.Module):
-    def __init__(self, input_dim, embedding_dim, hidden_dim, output_size):
+    def __init__(self, input_dim, embedding_dim, hidden_dim, output_size, smax = 'off'):
         super(Gerador, self).__init__()
         self.embedding = torch.nn.Embedding(input_dim, embedding_dim)
-        self.lstm = torch.nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
-        self.linear = torch.nn.Linear(hidden_dim, output_size)
-        if smax == 'on':
-           self.softmax = torch.nn.Softmax(dim=1)
-
+        self.lstm = torch.nn.LSTM(embedding_dim, hidden_dim, bidirectional=True, batch_first=True)
+        self.attention = torch.nn.Linear(hidden_dim * 2, hidden_dim * 2)
+        self.linear = torch.nn.Linear(hidden_dim * 2, output_size)
+        self.smax = smax
+        if self.smax == 'on':
+           self.softmax = torch.nn.Softmax(dim=-1)
+    
     def forward(self, input, hidden=None):
         embedded = self.embedding(input)
         output, hidden = self.lstm(embedded, hidden)
-        output = self.linear(output)
-        if smax == 'on':
+        # Calculo da Atenção
+        attention_weights = torch.nn.functional.softmax(self.attention(output), dim=-1)
+        context_vector = attention_weights * output
+        # Passa pela camada linear
+        output = self.linear(context_vector)
+        #output = self.linear(output)
+        
+        if self.smax == 'on':
            output = self.softmax(output)
+
         return output, hidden
 
 if args.verbose == 'on':
@@ -147,7 +161,11 @@ treino = args.treino
 textos_falsos = {}
 valor = args.valor
 palavra_para_numero, numero_para_palavra,textos_reais = carregar_vocabulario(pasta, types)
-output = args.output
+if modo == 'curto':
+    output = 'same'
+elif modo == 'longo':
+    output = 'next'
+
 aprendeu = 0
 
 max_length = {}
@@ -234,6 +252,9 @@ for tipo in types:
         perda_gerador  = 0
         epoca = 1
         while epoca <= num_epocas:
+           if (epoca % 100 == 0):
+               print(f'Epoca multiplo de 100: salvando') 
+               torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
            gerador[tipo].train()
            if args.verbose == 'on':
              print(f'\n\n\nEpoca {epoca}/{num_epocas}')
@@ -254,17 +275,18 @@ for tipo in types:
               if seq > max_len:
                 seq = seq % max_len
                 #seq = 0
+                torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
                 print(f'\n\nREINICIANDO DO INICIO DOS TEXTOS!!!\n')
                 rep = rep + 1
                 print(f'\nAUMENTANDO AS REPETIÇÕES\n')
-                if modo == 'curto':
-                    modo = 'longo'
-                    output = 'next'
-                    print(f'Mudanndo para modo {modo}\n')
-                elif modo == 'longo':
-                    modo = 'curto'
-                    output = 'same'
-                    print(f'Mudando para modo {modo}\n')
+                #if modo == 'curto':
+                #    modo = 'longo'
+                #    output = 'next'
+                #    print(f'Mudanndo para modo {modo}\n')
+                #elif modo == 'longo':
+                #    modo = 'curto'
+                #    output = 'same'
+                #    print(f'Mudando para modo {modo}\n')
 
               rand = torch.tensor([seq])
               if ((epoca) % rep == 0):
@@ -280,7 +302,8 @@ for tipo in types:
                   val = input(f'Valor: ')
                   val = int(val)
                   if val<0 or val > max_len:
-                     val = torch.randint(0,len(textos_reais[tipo])-2,(1,))
+                    val = 0 
+                    #val = torch.randint(0,len(textos_reais[tipo])-2,(1,))
                if ((epoca - 1) % rep == 0):
                    val = val + 1
                rand = torch.tensor([val])
@@ -380,7 +403,7 @@ for tipo in types:
            if output == 'next':
                prox = rand + 1
                if prox > max_len:
-                   prox = 1
+                   prox = 0
                prox = torch.tensor([prox])
                prompt_unpad = textos_reais[tipo][prox]
                prompt_unpad = prompt_unpad.to(torch.int64)
@@ -409,7 +432,9 @@ for tipo in types:
                #resposta = input('0 para errado e 1 para certo: ')
                #confirm = int(resposta)
                confirm = 1
-           
+           if output == 'same':
+               prompt_unpad = prompt_unpad.unsqueeze(0)
+               print(f'{entrada.shape} e {prompt_unpad.shape}')
            if entrada.size(1) < prompt_unpad.size(1):
                #print('\nentrada do gerador menor que saida esperada.')
                fill_size = prompt_unpad.size(1) - entrada.size(1)
@@ -420,26 +445,27 @@ for tipo in types:
                #prompt_unpad = pad_sequence([torch.cat((t, torch.full((fill_size,), 55268, dtype=torch.int64))) for t in prompt_unpad], batch_first=True)
 
            texto_falso,_ = gerador[tipo](entrada)
+           #print(f'Formato saida gerador {texto_falso.shape}\nsaida {texto_falso}')
            if smax == 'off':
                texto_falso = torch.softmax(texto_falso,dim=1)
-           
+               #print(f'Saida pos-max {texto_falso}')
            prompt_unpad = prompt_unpad.to(torch.int64)
 
+           print('1-hot do prompt')
            prompt_hot = F.one_hot(prompt_unpad,len(numero_para_palavra[tipo])).float()
            prompt_hot = prompt_hot.squeeze(0)
            
            if treino == 'rel':
+              print('Log na saida do gerador')
               texto_falso = torch.log(texto_falso) 
            prompt_hot.requires_grad_()
            prompt_hot.retain_grad()
            texto_falso.requires_grad_()
            texto_falso.retain_grad()
            texto_falso = texto_falso.squeeze(0)
-           if texto_falso.size(0) > prompt_hot.size(0):
-               texto_falso = texto_falso[:prompt_hot.size(0), :]
-
            texto_falso_max = torch.argmax(texto_falso, dim=-1)
            texto_falso_max = texto_falso_max.to(torch.int64)
+
            saida = decoder(texto_falso_max.tolist(),tipo,numero_para_palavra)
            
            if args.verbose == 'on':
@@ -475,7 +501,7 @@ for tipo in types:
            epoca = epoca + 1
            
            if args.verbose == 'on':
-              print(f'Tipo {tipo}, Epoca {epoca-1}/{num_epocas} - Perda Gerador {perda_gerador}')
+              print(f'Tipo {tipo}, Epoca {epoca-1}/{num_epocas} - Perda Gerador {perda_gerador} Modo - {modo} Indice {rand}')
            else:
               print(f'Perda: {perda_gerador}')
            
