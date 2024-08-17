@@ -16,6 +16,7 @@ from nltk.tokenize import word_tokenize
 from nltk.tag import pos_tag
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset, DataLoader
+import torch.nn as nn
 import torch.nn.functional as F
 # Baixar as stopwords
 #nltk.download('punkt')
@@ -53,12 +54,12 @@ def limit_noise_dim(value):
 parser = argparse.ArgumentParser()
 parser.add_argument('--save_mode', choices=['local', 'nuvem'], default='local', help='Escolha onde salvar o modelo')
 parser.add_argument('--save_time', choices=['epoch', 'session'], default='session', help='Escolha quando salvar o modelo')
-parser.add_argument('--num_epocas', type=int, default=1200, help='Número de épocas para treinamento')
+parser.add_argument('--num_epocas', type=int, default=1000, help='Número de épocas para treinamento')
 parser.add_argument('--num_samples', type=int, default=2, help='Número de amostras para cada época')
-parser.add_argument('--rep', type=int, default=2, help='Quantidade de repetições')
+parser.add_argument('--rep', type=int, default=1, help='Quantidade de repetições')
 parser.add_argument('--lstm', choices=['reset', 'normal','print'],default='normal', help='Estado do LSTM')
 parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais informações de saída')
-parser.add_argument('--modo', choices=['auto','manual', 'curto', 'longo'],default='longo', help='Modo do Prompt: auto, manual ou real')
+parser.add_argument('--modo', choices=['auto','manual', 'curto', 'longo'],default='longo', help='Modo do Prompt: auto, manual ou real (curto ou longo)')
 parser.add_argument('--debug', choices=['on', 'off'], default='off', help='Debug Mode')
 parser.add_argument('--treino', choices=['abs','rel'], default='abs', help='Treino Absoluto ou Relativo')
 parser.add_argument('--valor', choices=['auto','seq', 'cont'], default='seq', help='Valor é automatico ou sequencial')
@@ -69,30 +70,48 @@ args = parser.parse_args()
 smax = args.smax
 if args.verbose == 'on':
     print('Definindo a arquitetura do modelo gerador')
-class Gerador(torch.nn.Module):
-    def __init__(self, input_dim, embedding_dim, hidden_dim, output_size, smax = 'off'):
+
+class Gerador(nn.Module):
+    def __init__(self, input_dim, embedding_dim, hidden_dim, output_size, smax='off'):
         super(Gerador, self).__init__()
-        self.embedding = torch.nn.Embedding(input_dim, embedding_dim)
-        self.lstm = torch.nn.LSTM(embedding_dim, hidden_dim, bidirectional=True, batch_first=True)
-        self.attention = torch.nn.Linear(hidden_dim * 2, hidden_dim * 2)
-        self.linear = torch.nn.Linear(hidden_dim * 2, output_size)
+        
+        self.embedding = nn.Embedding(input_dim, embedding_dim)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, bidirectional=True, batch_first=True)
+        
+        # Camada de Atenção
+        self.attention = nn.Linear(hidden_dim * 2, hidden_dim * 2)
+        self.attention_combine = nn.Linear(hidden_dim * 4, hidden_dim * 2)
+        
+        # Camada Linear para saída final
+        self.linear = nn.Linear(hidden_dim * 2, output_size)
+        
         self.smax = smax
         if self.smax == 'on':
-           self.softmax = torch.nn.Softmax(dim=-1)
-    
+            self.softmax = nn.Softmax(dim=-1)
+
     def forward(self, input, hidden=None):
         embedded = self.embedding(input)
         output, hidden = self.lstm(embedded, hidden)
-        # Calculo da Atenção
-        attention_weights = torch.nn.functional.softmax(self.attention(output), dim=-1)
-        context_vector = attention_weights * output
-        # Passa pela camada linear
-        output = self.linear(context_vector)
-        #output = self.linear(output)
+        
+        # Cálculo da Atenção
+        attention_weights = F.softmax(self.attention(output), dim=-1)
+        
+        # Multiplica atenção com o output para obter o vetor de contexto
+        context_vector = torch.sum(attention_weights * output, dim=1)
+        
+        # Expande o vetor de contexto e combina com o output original
+        context_vector = context_vector.unsqueeze(1).repeat(1, output.size(1), 1)
+        combined = torch.cat((context_vector, output), dim=-1)
+        
+        # Passa pela camada para combinar a atenção
+        combined = self.attention_combine(combined)
+        
+        # Passa pela camada linear para previsão
+        output = self.linear(combined)
         
         if self.smax == 'on':
-           output = self.softmax(output)
-
+            output = self.softmax(output)
+        
         return output, hidden
 
 if args.verbose == 'on':
@@ -270,7 +289,7 @@ for tipo in types:
                  with open('seq.json', 'r') as f:
                       seq = json.load(f)
               except FileNotFoundError:
-                 seq = 1
+                 seq = 0
 
               if seq > max_len:
                 seq = seq % max_len
@@ -434,15 +453,16 @@ for tipo in types:
                confirm = 1
            if output == 'same':
                prompt_unpad = prompt_unpad.unsqueeze(0)
-               print(f'{entrada.shape} e {prompt_unpad.shape}')
+           
+           print(f'{entrada.shape} e {prompt_unpad.shape}')
            if entrada.size(1) < prompt_unpad.size(1):
-               #print('\nentrada do gerador menor que saida esperada.')
+               print('\nentrada do gerador menor que saida esperada.')
                fill_size = prompt_unpad.size(1) - entrada.size(1)
                entrada = pad_sequence([torch.cat((t, torch.full((fill_size,), 2, dtype=torch.int64))) for t in entrada], batch_first=True)
-           #elif prompt_unpad.size(1) < entrada.size(1):
-               #print('\nsaida esperada precisa de padding para ficar igual entrada')
-               #fill_size = entrada.size(1) - prompt_unpad.size(1)
-               #prompt_unpad = pad_sequence([torch.cat((t, torch.full((fill_size,), 55268, dtype=torch.int64))) for t in prompt_unpad], batch_first=True)
+           elif prompt_unpad.size(1) < entrada.size(1):
+               print('\nsaida esperada precisa de padding para ficar igual entrada')
+               fill_size = entrada.size(1) - prompt_unpad.size(1)
+               prompt_unpad = pad_sequence([torch.cat((t, torch.full((fill_size,), 0 , dtype=torch.int64))) for t in prompt_unpad], batch_first=True)
 
            texto_falso,_ = gerador[tipo](entrada)
            #print(f'Formato saida gerador {texto_falso.shape}\nsaida {texto_falso}')
