@@ -45,6 +45,7 @@ for tipo in types:
                  texto.pop()
              textos_unpad.append(texto)
     min_length = min(len(texto) for texto in textos_unpad)
+    print(f'Tamanho Minimo do texto é {min_length}')
     for i in range(len(textos_reais[tipo])):
         random_list = []  # Inicialize random_list dentro do loop
         porcentagem = (i/len(textos_reais[tipo]))*100

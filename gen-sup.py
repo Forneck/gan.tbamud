@@ -59,7 +59,7 @@ parser.add_argument('--num_samples', type=int, default=2, help='Número de amost
 parser.add_argument('--rep', type=int, default=1, help='Quantidade de repetições')
 parser.add_argument('--lstm', choices=['reset', 'normal','print'],default='normal', help='Estado do LSTM')
 parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais informações de saída')
-parser.add_argument('--modo', choices=['auto','manual', 'curto', 'longo'],default='longo', help='Modo do Prompt: auto, manual ou real (curto ou longo)')
+parser.add_argument('--modo', choices=['auto','manual', 'curto', 'longo'],default='curto', help='Modo do Prompt: auto, manual ou real (curto ou longo)')
 parser.add_argument('--debug', choices=['on', 'off'], default='off', help='Debug Mode')
 parser.add_argument('--treino', choices=['abs','rel'], default='abs', help='Treino Absoluto ou Relativo')
 parser.add_argument('--valor', choices=['auto','seq', 'cont'], default='seq', help='Valor é automatico ou sequencial')
@@ -553,3 +553,12 @@ if args.save_time == 'session':
 agora = datetime.datetime.now()
 fim = agora.strftime("%H:%M:%S_%d-%m-%Y")
 print(f'Início da sessão de treinamento do gerador em {timestamp} com fim em {fim}')
+
+# Função para contar o número total de parâmetros
+def contar_parametros(model):
+    return sum(p.numel() for p in model.parameters())
+
+for tipo in types:
+    # Exibindo o número total de parâmetros
+    total_parametros = contar_parametros(gerador[tipo])
+    print(f"O modelo para o {tipo}  possui {total_parametros} parâmetros.")
