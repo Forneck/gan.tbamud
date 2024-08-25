@@ -20,25 +20,16 @@ import torch.nn.functional as F
 #nltk.download('punkt')
 #nltk.download('averaged_perceptron_tagger')
 #nltk.download('stopwords')
-print('Iniciando treinamento de qualidade do Gerador')
+print('Running GAN training')
 agora = datetime.datetime.now()
 timestamp = agora.strftime("%H:%M:%S_%d-%m-%Y")
-print(f'Inicio da sessão: {timestamp}')
+print(f'Session start time: {timestamp}')
 #stats = f'session-quality-{timestamp}.json'
 pasta = os.path.expanduser('~/gan/v1/')
 # Tipos de arquivos que você quer gerar
 types = ['.mob']
-# Inicialize um dicionário para armazenar as estatísticas
-estatisticas = {
-    'tipo': [],
-    'perda_gerador': [],
-    }
-token = 'HF-AUTH-TOKEN'
 
-config = {
-    'seq',
-    'rep'
-}
+token = 'HF-AUTH-TOKEN'
 
 def limit_noise_dim(value):
     ivalue = int(value)
@@ -52,19 +43,17 @@ def limit_treshold(value):
     ivalue = int(value)
     if ivalue > 100:
         ivalue = 100
-        print('O valor máximo é de 100')
+        print('Max value is  100')
     if ivalue < 50:
         ivalue = 50
-        print('O valor mínimo é de 50')
+        print('Min value is 50')
     return ivalue
 
 # Definindo o argumento para escolher entre salvar localmente ou na nuvem
 parser = argparse.ArgumentParser()
-parser.add_argument('--save_mode', choices=['local', 'nuvem'], default='local', help='Escolha onde salvar o modelo')
-parser.add_argument('--save_time', choices=['epoch', 'session'], default='session', help='Escolha quando salvar o modelo')
-parser.add_argument('--num_epocas', type=int, default=63, help='Número de épocas para treinamento')
-parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
-parser.add_argument('--rep', type=int, default=1, help='Quantidade de repetições')
+parser.add_argument('--save_mode', choices=['local', 'cloud'], default='local', help='Where to save the model')
+parser.add_argument('--save_time', choices=['epoch', 'session'], default='session', help='When to save the model')
+parser.add_argument('--num_epocas', type=int, default=63, help='How many training epochs?')
 parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais informações de saída')
 parser.add_argument('--debug', choices=['on', 'off'], default='off', help='Debug Mode')
 parser.add_argument('--smax', choices=['on','off'], default = 'on', help='Softmax direto no gerador?')
@@ -191,15 +180,9 @@ def carregar_vocabulario(pasta, types):
 if args.verbose == 'on':
     print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
-rep = args.rep
-if rep > num_epocas:
-    rep = num_epocas
-elif rep <= 0:
-    rep = 1
 debug = args.debug
 taxa_aprendizado_gerador = 0.1 # > 0.01 gerador da output 0
 taxa_aprendizado_discriminador = 0.001
-num_samples = args.num_samples #numero de amostras dentro da mesma época
 limiar = args.limiar / 100
 noise_dim = args.noise_dim
 textos_falsos = {}
@@ -221,7 +204,7 @@ for tipo in types:
     print("Formato dos textos falsos:", textos_falsos[tipo].shape)
     print('Padronizando o tamanho dos textos reais e falsos')
     max_length[tipo] = max(max([len(t) for t in textos_reais[tipo]]), max([len(t) for t in textos_falsos[tipo]]))
-    min_length[tipo] = 25
+    min_length = 3
 
     if args.verbose == 'on':
         print(' Combinando os textos reais e os textos falsos')
@@ -321,7 +304,7 @@ for tipo in types:
              print(f'\n\n\nEpoca {epoca}/{num_epocas}')
            textos_reais[tipo].requires_grad_()
            #prompt_length = torch.randint(min_length[tipo], max_length[tipo] + 1, (1,)).item()
-           prompt_length = torch.randint(min_length[tipo], max_length[tipo] + 1, (1,)).item()
+           prompt_length = torch.randint(3, max_length[tipo] + 1, (1,)).item()
            prompt = torch.randint(0,len(numero_para_palavra[tipo]),(1,prompt_length))
            decoded = decoder(prompt[0].tolist(),tipo,numero_para_palavra)
            print(f"O prompt usado foi: {decoded}")
@@ -333,6 +316,12 @@ for tipo in types:
            texto_falso.requires_grad_()
            texto_falso.retain_grad()
            
+           texto_falso_max = torch.argmax(texto_falso, dim=-1)
+           texto_falso_max = texto_falso_max.to(torch.int64)
+           saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
+           if args.verbose == 'on':
+               print(f'\nSaida do Gerador: {saida} \n')
+
            #Cria camada de ajuste saida do gerador para discriminador
            ajustador_dim = torch.nn.Linear(len(numero_para_palavra[tipo]),512)
            saida_ajustada = ajustador_dim(texto_falso)
@@ -403,12 +392,13 @@ for tipo in types:
 
            print(f'Tipo {tipo}, Epoca {epoca} de {num_epocas}, Perda Discriminador {perda / 2}, Perda Gerador {perda_gerador}')
 
+           texto_falso,_ = gerador[tipo](prompt)
            texto_falso_max = torch.argmax(texto_falso, dim=-1)
            texto_falso_max = texto_falso_max.to(torch.int64) 
            saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
             
            if args.verbose == 'on':
-              print(f'\nSaida do Gerador: {saida} \n')
+              print(f'\nSaida final: {saida} \n')
            else:
               print(f'\n{saida} \n  ({epoca}/{num_epocas}) \n')
            
@@ -440,7 +430,7 @@ if args.save_time == 'session':
     if args.save_mode == 'local':
         torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
         torch.save(discriminador[tipo], os.path.expanduser('discriminador_' + tipo[1:] + '.pt'))
-    elif args.save_mode == 'nuvem':
+    elif args.save_mode == 'cloud':
         gerador[tipo].save_pretrained('https://huggingface.co/' + 'gerador_' + tipo[1:], use_auth_token=token)
         discriminador[tipo].save_pretrained('https://huggingface.co/' + 'discriminador_' + tipo[1:], use_auth_token=token)
 

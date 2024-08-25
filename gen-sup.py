@@ -9,8 +9,6 @@ import json
 import collections
 import datetime
 import re
-import re
-import nltk
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from nltk.tag import pos_tag
@@ -54,16 +52,15 @@ def limit_noise_dim(value):
 parser = argparse.ArgumentParser()
 parser.add_argument('--save_mode', choices=['local', 'nuvem'], default='local', help='Escolha onde salvar o modelo')
 parser.add_argument('--save_time', choices=['epoch', 'session'], default='session', help='Escolha quando salvar o modelo')
-parser.add_argument('--num_epocas', type=int, default=1000, help='Número de épocas para treinamento')
-parser.add_argument('--num_samples', type=int, default=2, help='Número de amostras para cada época')
+parser.add_argument('--num_epocas', type=int, default=150, help='Número de épocas para treinamento')
+parser.add_argument('--num_samples', type=int, default=150, help='Número de amostras para cada época')
 parser.add_argument('--rep', type=int, default=1, help='Quantidade de repetições')
-parser.add_argument('--lstm', choices=['reset', 'normal','print'],default='normal', help='Estado do LSTM')
 parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais informações de saída')
-parser.add_argument('--modo', choices=['auto','manual', 'curto', 'longo'],default='curto', help='Modo do Prompt: auto, manual ou real (curto ou longo)')
+parser.add_argument('--modo', choices=['auto','manual', 'curto', 'longo'],default='curto', help='Modo do Prompt: auto, manual ou real')
 parser.add_argument('--debug', choices=['on', 'off'], default='off', help='Debug Mode')
 parser.add_argument('--treino', choices=['abs','rel'], default='abs', help='Treino Absoluto ou Relativo')
 parser.add_argument('--valor', choices=['auto','seq', 'cont'], default='seq', help='Valor é automatico ou sequencial')
-parser.add_argument('--output', choices=['same','next'], default='next', help='Atual ou proximo texto')
+parser.add_argument('--output', choices=['same','next'], default='same', help='Atual ou proximo texto')
 parser.add_argument('--smax', choices=['on','off'], default = 'on', help='Softmax direto no gerador?')
 args = parser.parse_args()
 
@@ -126,6 +123,9 @@ def compare_state_dicts(dict1, dict2):
             print(f'Os pesos para {key1} não mudaram.')
         else:
             print(f'Os pesos para {key1} mudaram.')
+            if args.debug == 'on':
+              print(f'Pesos iniciais para {key1}: {tensor1}')
+              print(f'Pesos finais para {key2}: {tensor2}')
 
 def unpad(texto_entrada):
        unpad = []
@@ -234,7 +234,6 @@ else:
 gerador = {}
 for tipo in types:
     # Caminhos dos modelos
-    output_size = max_length[tipo]
     gerador_path = os.path.expanduser('gerador_' + tipo[1:] + '.pt')
 
     print('Verificando se o gerador existe para o tipo: ', tipo[1:])
@@ -249,23 +248,17 @@ for tipo in types:
 # Criando os otimizadores para cada modelo
 otimizador_gerador = {}
 scheduler_gerador = {}
+peso_inicio = {}
 for tipo in types:
     otimizador_gerador[tipo] = torch.optim.Adam(gerador[tipo].parameters(), lr=taxa_aprendizado_gerador)
     scheduler_gerador[tipo] = torch.optim.lr_scheduler.ExponentialLR(otimizador_gerador[tipo], gamma=0.99)
     #scheduler_gerador[tipo] = torch.optim.lr_scheduler.ReduceLROnPlateau(otimizador_gerador[tipo], mode='min', factor=0.1, patience=10)
+    peso_inicio[tipo] = {key: value.clone() for key, value in gerador[tipo].state_dict().items()}
+    if debug == 'on':
+       print(f'Pesos antes do treinamento: {peso_inicio[tipo]}')
 
-for tipo in types:
-    if args.lstm == 'reset':
-        gerador[tipo].hidden = (torch.ones(1, 1, 512), torch.ones(1, 1, 512))
-        print('LSTM resetado!')
-    elif args.lstm == 'print':
-        oculto = gerador[tipo].hidden
-        print(f'Estado Oculto do LSTM para {tipo}:\n{oculto}')                                  
-#print(f'Pesos antes do treinamento: {gerador[tipo].state_dict()}')
-peso_inicio = {}
 print('Iniciando o treinamento')
 for tipo in types:
-        peso_inicio[tipo] = gerador[tipo].state_dict()
         if args.verbose == 'on':
            print(f'Tipo {tipo} - Treinamento')
         perda_gerador  = 0
@@ -292,8 +285,8 @@ for tipo in types:
                  seq = 0
 
               if seq > max_len:
-                seq = seq % max_len
-                #seq = 0
+                #seq = seq % max_len
+                seq = 0
                 torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
                 print(f'\n\nREINICIANDO DO INICIO DOS TEXTOS!!!\n')
                 rep = rep + 1
@@ -458,36 +451,49 @@ for tipo in types:
            if entrada.size(1) < prompt_unpad.size(1):
                print('\nentrada do gerador menor que saida esperada.')
                fill_size = prompt_unpad.size(1) - entrada.size(1)
-               entrada = pad_sequence([torch.cat((t, torch.full((fill_size,), 2, dtype=torch.int64))) for t in entrada], batch_first=True)
+               entrada = pad_sequence([torch.cat((t, torch.full((fill_size,), 503, dtype=torch.int64))) for t in entrada], batch_first=True)
            elif prompt_unpad.size(1) < entrada.size(1):
                print('\nsaida esperada precisa de padding para ficar igual entrada')
                fill_size = entrada.size(1) - prompt_unpad.size(1)
-               prompt_unpad = pad_sequence([torch.cat((t, torch.full((fill_size,), 0 , dtype=torch.int64))) for t in prompt_unpad], batch_first=True)
+               prompt_unpad = pad_sequence([torch.cat((t, torch.full((fill_size,), 503 , dtype=torch.int64))) for t in prompt_unpad], batch_first=True)
 
            texto_falso,_ = gerador[tipo](entrada)
-           #print(f'Formato saida gerador {texto_falso.shape}\nsaida {texto_falso}')
+           print(f'Formato saida gerador {texto_falso.shape}')
            if smax == 'off':
                texto_falso = torch.softmax(texto_falso,dim=1)
                #print(f'Saida pos-max {texto_falso}')
            prompt_unpad = prompt_unpad.to(torch.int64)
 
-           print('1-hot do prompt')
+           print('1-hot do esperado')
            prompt_hot = F.one_hot(prompt_unpad,len(numero_para_palavra[tipo])).float()
-           prompt_hot = prompt_hot.squeeze(0)
+           #prompt_hot = prompt_hot.squeeze(0)
            
            if treino == 'rel':
-              print('Log na saida do gerador')
-              texto_falso = torch.log(texto_falso) 
+              print(f'Log na saida do gerador para {texto_falso.shape}')
+              saida_original = texto_falso
+              texto_falso = torch.log(texto_falso)
+              print(f'shape apos log: {texto_falso.shape}')
+              print(f'Convertendo saida esperada em probabilidades com forma {prompt_hot.shape}')
+              epsilon = 0.1
+              smoothed = (1 - epsilon) * prompt_hot + (epsilon / len(numero_para_palavra[tipo]))
+              print(f'Forma do esperado depois da suavização {smoothed.shape} e valor: {smoothed}')
+              prompt_hot = smoothed
+
+           prompt_hot = prompt_hot.squeeze(0)
+
            prompt_hot.requires_grad_()
            prompt_hot.retain_grad()
            texto_falso.requires_grad_()
            texto_falso.retain_grad()
            texto_falso = texto_falso.squeeze(0)
-           texto_falso_max = torch.argmax(texto_falso, dim=-1)
+           if treino == 'rel':
+              saida_original = saida_original.squeeze(0)
+              texto_falso_max = torch.argmax(saida_original, dim= -1)
+           else:
+              texto_falso_max = torch.argmax(texto_falso, dim=-1)
            texto_falso_max = texto_falso_max.to(torch.int64)
 
            saida = decoder(texto_falso_max.tolist(),tipo,numero_para_palavra)
-           
            if args.verbose == 'on':
               print(f'\nSaida do Gerador: {saida} \n')
            else:
@@ -535,10 +541,9 @@ for tipo in types:
         #Fim do tipo atual
 
 #Fim da sessão. Incluir teste:
-if debug == 'on':
-    peso_fim = {}
-    for tipo in types:
-        peso_fim[tipo] = gerador[tipo].state_dict()
+peso_fim = {}
+for tipo in types:
+        peso_fim[tipo] = {key: value.clone() for key, value in gerador[tipo].state_dict().items()}
         print(f'Comparando os pesos para o tipo {tipo}:')
         compare_state_dicts(peso_inicio[tipo], peso_fim[tipo])
 
