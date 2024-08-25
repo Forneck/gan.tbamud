@@ -181,7 +181,7 @@ if args.verbose == 'on':
     print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
 debug = args.debug
-taxa_aprendizado_gerador = 0.1 # > 0.01 gerador da output 0
+taxa_aprendizado_gerador = 0.001 # > 0.01 gerador da output 0
 taxa_aprendizado_discriminador = 0.001
 limiar = args.limiar / 100
 noise_dim = args.noise_dim
@@ -333,13 +333,14 @@ for tipo in types:
               acuracia_ger = 0
               perda = 0
               perda_falso = 0
+              perda_real = 0
               perda_gerador = 0
 
               embedding_layer = torch.nn.Embedding(len(numero_para_palavra[tipo]), 512)
               texto_real = embedding_layer(real)
               saida_real,_ = discriminador[tipo](texto_real)
               saida_disc_real = torch.exp(saida_real)
-              print(f'Saida do discriminador para texto de treinamento: {saida_disc_real} com rotulo de treinamento: {rotulos}')
+              print(f'Saida do discriminador para texto de treinamento: {saida_disc_real}')
               #rotulo 0 texto de treinamento falso
               if rotulos == 0:
                   rotulos_reshaped = [[0,1]]
@@ -348,10 +349,9 @@ for tipo in types:
                   rotulos_reshaped = [[1,0]]
             
               rotulos_reshaped = torch.tensor(rotulos_reshaped, dtype=torch.float32)
-              print(f'Rotulo reshaped: {rotulos_reshaped}')
+              print(f'Rotulos: {rotulos_reshaped}')
               
               perda_real = criterio_discriminador(saida_disc_real, rotulos_reshaped)
-              perda = perda + perda_real
               print(f'Perda do Discriminador para texto de treinamento: {perda_real}')
 
               if args.verbose == 'on':
@@ -366,10 +366,9 @@ for tipo in types:
               saida_disc_falsa = torch.exp(saida_falsa)
               print(f'Saida do Discriminador para texto gerado: {saida_disc_falsa}')
               #Invertendo rotulos, texto falso do gerador no discriminador
-              rotulos_reshaped = [[0,1]]
-              rotulos_reshaped = torch.tensor(rotulos_reshaped, dtype=torch.float32)
-              perda_falso = criterio_discriminador(saida_disc_falsa,rotulos_reshaped)
-              perda = perda + perda_falso
+              rotulos_certo = [[0,1]]
+              rotulos_certo = torch.tensor(rotulos_certo, dtype=torch.float32)
+              perda_falso = criterio_discriminador(saida_disc_falsa,rotulos_certo)
               print(f'Perda do Discriminador para texto gerado: {perda_falso}')
               if args.verbose == 'on':
                   print('Atualizando os parâmetros do Discriminador para texto gerado')
@@ -380,6 +379,7 @@ for tipo in types:
               scheduler_discriminador[tipo].step(perda_falso)
 
               print('Invertendo os rotulos e calculando a perda do gerador')
+              
               saida_falsa,_ = discriminador[tipo](saida_ajustada.detach())
               saida_nova = torch.exp(saida_falsa)
               print(f'Saida do discriminador apos treinamento: {saida_nova}')
@@ -390,18 +390,10 @@ for tipo in types:
               otimizador_gerador[tipo].step()
               otimizador_gerador[tipo].zero_grad()
 
-           print(f'Tipo {tipo}, Epoca {epoca} de {num_epocas}, Perda Discriminador {perda / 2}, Perda Gerador {perda_gerador}')
+              perda = (perda_real + perda_falso)/2
 
-           texto_falso,_ = gerador[tipo](prompt)
-           texto_falso_max = torch.argmax(texto_falso, dim=-1)
-           texto_falso_max = texto_falso_max.to(torch.int64) 
-           saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
-            
-           if args.verbose == 'on':
-              print(f'\nSaida final: {saida} \n')
-           else:
-              print(f'\n{saida} \n  ({epoca}/{num_epocas}) \n')
-           
+           print(f'Tipo {tipo}, Epoca {epoca} de {num_epocas}, Perda Discriminador {perda}, Perda Gerador {perda_gerador}')
+
            epoca = epoca + 1
            
            #estatisticas['tipo'].append(tipo)
