@@ -204,7 +204,7 @@ for tipo in types:
     print("Formato dos textos falsos:", textos_falsos[tipo].shape)
     print('Padronizando o tamanho dos textos reais e falsos')
     max_length[tipo] = max(max([len(t) for t in textos_reais[tipo]]), max([len(t) for t in textos_falsos[tipo]]))
-    min_length = 3
+    min_length[tipo] = 25
 
     if args.verbose == 'on':
         print(' Combinando os textos reais e os textos falsos')
@@ -303,8 +303,7 @@ for tipo in types:
            if args.verbose == 'on':
              print(f'\n\n\nEpoca {epoca}/{num_epocas}')
            textos_reais[tipo].requires_grad_()
-           #prompt_length = torch.randint(min_length[tipo], max_length[tipo] + 1, (1,)).item()
-           prompt_length = torch.randint(3, max_length[tipo] + 1, (1,)).item()
+           prompt_length = torch.randint(min_length[tipo], max_length[tipo] + 1, (1,)).item()
            prompt = torch.randint(0,len(numero_para_palavra[tipo]),(1,prompt_length))
            decoded = decoder(prompt[0].tolist(),tipo,numero_para_palavra)
            print(f"O prompt usado foi: {decoded}")
