@@ -20,16 +20,25 @@ import torch.nn.functional as F
 #nltk.download('punkt')
 #nltk.download('averaged_perceptron_tagger')
 #nltk.download('stopwords')
-print('Running GAN training')
+print('Iniciando treinamento de qualidade do Gerador')
 agora = datetime.datetime.now()
 timestamp = agora.strftime("%H:%M:%S_%d-%m-%Y")
-print(f'Session start time: {timestamp}')
+print(f'Inicio da sessão: {timestamp}')
 #stats = f'session-quality-{timestamp}.json'
-pasta = os.path.expanduser('~/gan/v1/')
+pasta = os.path.expanduser('~/gan/v1')
 # Tipos de arquivos que você quer gerar
 types = ['.mob']
-
+# Inicialize um dicionário para armazenar as estatísticas
+estatisticas = {
+    'tipo': [],
+    'perda_gerador': [],
+    }
 token = 'HF-AUTH-TOKEN'
+
+config = {
+    'seq',
+    'rep'
+}
 
 def limit_noise_dim(value):
     ivalue = int(value)
@@ -43,22 +52,25 @@ def limit_treshold(value):
     ivalue = int(value)
     if ivalue > 100:
         ivalue = 100
-        print('Max value is  100')
+        print('O valor máximo é de 100')
     if ivalue < 50:
         ivalue = 50
-        print('Min value is 50')
+        print('O valor mínimo é de 50')
     return ivalue
 
 # Definindo o argumento para escolher entre salvar localmente ou na nuvem
 parser = argparse.ArgumentParser()
-parser.add_argument('--save_mode', choices=['local', 'cloud'], default='local', help='Where to save the model')
-parser.add_argument('--save_time', choices=['epoch', 'session'], default='session', help='When to save the model')
-parser.add_argument('--num_epocas', type=int, default=63, help='How many training epochs?')
+parser.add_argument('--save_mode', choices=['local', 'nuvem'], default='local', help='Escolha onde salvar o modelo')
+parser.add_argument('--save_time', choices=['epoch', 'session'], default='session', help='Escolha quando salvar o modelo')
+parser.add_argument('--num_epocas', type=int, default=63, help='Número de épocas para treinamento')
+parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
+parser.add_argument('--rep', type=int, default=1, help='Quantidade de repetições')
 parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais informações de saída')
 parser.add_argument('--debug', choices=['on', 'off'], default='off', help='Debug Mode')
 parser.add_argument('--smax', choices=['on','off'], default = 'on', help='Softmax direto no gerador?')
 parser.add_argument('--limiar', type=limit_treshold, default=75, help='Limiar para considerar texto verdadeiro ou falso. Valor entre 50 e 100')
 parser.add_argument('--noise_dim', type=limit_noise_dim, default=100, help='Tamanho do ruido. Valor entre 3 e 150')
+parser.add_argument('--human', choices=['on','off'], default='off', help='Human feedback')
 args = parser.parse_args()
 
 smax = args.smax
@@ -139,7 +151,7 @@ class TextDataset(Dataset):
 if args.verbose == 'on':
     print('Definindo o Encoder')
 def encoder(texto, tipo, palavra_para_numero):
-    return [palavra_para_numero[tipo].get(palavra, 501) for palavra in nltk.word_tokenize(texto)]  # usando o nltk para tokenizar
+    return [palavra_para_numero[tipo].get(palavra, 1) for palavra in nltk.word_tokenize(texto)]  # usando o nltk para tokenizar
     #return [palavra_para_numero[tipo].get(palavra, 0) for palavra in palavras]
 
 def compare_state_dicts(dict1, dict2):
@@ -180,11 +192,18 @@ def carregar_vocabulario(pasta, types):
 if args.verbose == 'on':
     print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
+rep = args.rep
+if rep > num_epocas:
+    rep = num_epocas
+elif rep <= 0:
+    rep = 1
 debug = args.debug
 taxa_aprendizado_gerador = 0.001 # > 0.01 gerador da output 0
 taxa_aprendizado_discriminador = 0.001
+num_samples = args.num_samples #numero de amostras dentro da mesma época
 limiar = args.limiar / 100
 noise_dim = args.noise_dim
+human = args.human
 textos_falsos = {}
 palavra_para_numero, numero_para_palavra,textos_reais = carregar_vocabulario(pasta, types)
 
@@ -236,7 +255,7 @@ for tipo in types:
 if args.verbose == 'on':
     print('Definindo o objetivo de aprendizado')
 criterio_gerador = torch.nn.MSELoss()
-criterio_discriminador = torch.nn.BCELoss()
+criterio_discriminador = torch.nn.MSELoss()
 #criterio_discriminador = torch.nn.MSELoss()
 
 # Criando os modelos gerador,cnn e discriminador para cada tipo de texto
@@ -286,6 +305,22 @@ for tipo in types:
     if debug == 'on':
         print(f'Pesos antes do treinamento:\n Gerador: {peso_inicio[tipo]} \n Discriminador: {peso_inicio_discriminador[tipo]}')
 
+def obter_rotulos_humano():
+    while True:
+        # Solicita ao humano uma classificação: 0 para falso, 1 para real
+        classificacao = input("Classifique o texto: 0 para FALSO, 1 para REAL: ")
+        
+        try:
+            classificacao = int(classificacao)
+            if classificacao == 0:
+                return [[0, 1]]  # Rótulo para texto falso
+            elif classificacao == 1:
+                return [[1, 0]]  # Rótulo para texto real
+            else:
+                print("Entrada inválida. Por favor, insira 0 para FALSO ou 1 para REAL.")
+        except ValueError:
+            print("Entrada inválida. Por favor, insira um número inteiro: 0 para FALSO ou 1 para REAL.")
+
 torch.autograd.set_detect_anomaly(True)
 print('Iniciando o treinamento')
 for tipo in types:
@@ -303,14 +338,18 @@ for tipo in types:
            if args.verbose == 'on':
              print(f'\n\n\nEpoca {epoca}/{num_epocas}')
            textos_reais[tipo].requires_grad_()
-           prompt_length = torch.randint(min_length[tipo], max_length[tipo] + 1, (1,)).item()
+           #min_length[tipo] = max_length[tipo]
+           prompt_length = torch.randint(45, max_length[tipo] + 1, (1,)).item()
            prompt = torch.randint(0,len(numero_para_palavra[tipo]),(1,prompt_length))
+           print('Fazendo padding no prompt')
+           if prompt.size(1) < max_length[tipo]:
+               prompt = F.pad(prompt, (0, max_length[tipo] - prompt.size(1),0,0))
+           print(f'Prompt novo é {prompt.shape}')
            decoded = decoder(prompt[0].tolist(),tipo,numero_para_palavra)
            print(f"O prompt usado foi: {decoded}")
-           if prompt.size(1) < max_length[tipo]:
-               prompt = pad_sequence([torch.cat((t,torch.zeros(max_length[tipo] - len(t), dtype=torch.int64))) for t in prompt], batch_first=True)
 
            texto_falso,_ = gerador[tipo](prompt)
+           print(f'Formato do texto falso: {texto_falso.shape} ')
 
            texto_falso.requires_grad_()
            texto_falso.retain_grad()
@@ -332,14 +371,15 @@ for tipo in types:
               acuracia_ger = 0
               perda = 0
               perda_falso = 0
-              perda_real = 0
               perda_gerador = 0
 
               embedding_layer = torch.nn.Embedding(len(numero_para_palavra[tipo]), 512)
+              
               texto_real = embedding_layer(real)
+              #print(f'Tamanho da entrada do discriminador: {texto_real.shape}')
               saida_real,_ = discriminador[tipo](texto_real)
               saida_disc_real = torch.exp(saida_real)
-              print(f'Saida do discriminador para texto de treinamento: {saida_disc_real}')
+              print(f'Saida do discriminador para texto de treinamento: {saida_disc_real} com rotulo de treinamento: {rotulos}')
               #rotulo 0 texto de treinamento falso
               if rotulos == 0:
                   rotulos_reshaped = [[0,1]]
@@ -348,9 +388,11 @@ for tipo in types:
                   rotulos_reshaped = [[1,0]]
             
               rotulos_reshaped = torch.tensor(rotulos_reshaped, dtype=torch.float32)
-              print(f'Rotulos: {rotulos_reshaped}')
+              print(f'Rotulo reshaped: {rotulos_reshaped}')
               
               perda_real = criterio_discriminador(saida_disc_real, rotulos_reshaped)
+
+              perda = perda + perda_real
               print(f'Perda do Discriminador para texto de treinamento: {perda_real}')
 
               if args.verbose == 'on':
@@ -365,20 +407,38 @@ for tipo in types:
               saida_disc_falsa = torch.exp(saida_falsa)
               print(f'Saida do Discriminador para texto gerado: {saida_disc_falsa}')
               #Invertendo rotulos, texto falso do gerador no discriminador
-              rotulos_certo = [[0,1]]
-              rotulos_certo = torch.tensor(rotulos_certo, dtype=torch.float32)
-              perda_falso = criterio_discriminador(saida_disc_falsa,rotulos_certo)
-              print(f'Perda do Discriminador para texto gerado: {perda_falso}')
+              rotulos_reshaped = [[0,1]]
+              rotulos_reshaped = torch.tensor(rotulos_reshaped, dtype=torch.float32)
+              perda_falso = criterio_discriminador(saida_disc_falsa,rotulos_reshaped)
+              
+              if human == 'on':
+                 # Feedback humano para ajustar o discriminador
+                 rotulos_humano = obter_rotulos_humano()  # Suponha que isso retorne [1, 0] ou [0, 1]
+                 rotulos_humano = torch.tensor(rotulos_humano, dtype=torch.float32)
+
+                 # Calcula a diferença entre a saída do discriminador e o feedback humano
+                 perda_humano = criterio_discriminador(saida_disc_falsa, rotulos_humano)
+              
+                 lambda_humano = 10
+                 # Combina as perdas (pode usar uma média ponderada ou outra combinação)
+                 perda_total = perda_falso + lambda_humano * perda_humano
+
+              else:
+                  perda_total = perda_falso
+
+              #perda = perda + perda_falso
+              perda = perda + perda_total
+              print(f'Perda do Discriminador para texto gerado: {perda_total}')
               if args.verbose == 'on':
                   print('Atualizando os parâmetros do Discriminador para texto gerado')
 
-              otimizador_discriminador[tipo].zero_grad()
-              perda_falso.backward()
+              #perda_falso.backward()
+              perda_total.backward()
               otimizador_discriminador[tipo].step()
+              otimizador_discriminador[tipo].zero_grad()
               scheduler_discriminador[tipo].step(perda_falso)
 
               print('Invertendo os rotulos e calculando a perda do gerador')
-              
               saida_falsa,_ = discriminador[tipo](saida_ajustada.detach())
               saida_nova = torch.exp(saida_falsa)
               print(f'Saida do discriminador apos treinamento: {saida_nova}')
@@ -388,11 +448,20 @@ for tipo in types:
               perda_gerador.backward()
               otimizador_gerador[tipo].step()
               otimizador_gerador[tipo].zero_grad()
+              scheduler_gerador[tipo].step()
 
-              perda = (perda_real + perda_falso)/2
+           print(f'Tipo {tipo}, Epoca {epoca} de {num_epocas}, Perda Discriminador {perda / 2}, Perda Gerador {perda_gerador}')
 
-           print(f'Tipo {tipo}, Epoca {epoca} de {num_epocas}, Perda Discriminador {perda}, Perda Gerador {perda_gerador}')
-
+           texto_falso,_ = gerador[tipo](prompt)
+           texto_falso_max = torch.argmax(texto_falso, dim=-1)
+           texto_falso_max = texto_falso_max.to(torch.int64) 
+           saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
+            
+           if args.verbose == 'on':
+              print(f'\nSaida final: {saida} \n')
+           else:
+              print(f'\n{saida} \n  ({epoca}/{num_epocas}) \n')
+           
            epoca = epoca + 1
            
            #estatisticas['tipo'].append(tipo)
@@ -421,7 +490,7 @@ if args.save_time == 'session':
     if args.save_mode == 'local':
         torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
         torch.save(discriminador[tipo], os.path.expanduser('discriminador_' + tipo[1:] + '.pt'))
-    elif args.save_mode == 'cloud':
+    elif args.save_mode == 'nuvem':
         gerador[tipo].save_pretrained('https://huggingface.co/' + 'gerador_' + tipo[1:], use_auth_token=token)
         discriminador[tipo].save_pretrained('https://huggingface.co/' + 'discriminador_' + tipo[1:], use_auth_token=token)
 
