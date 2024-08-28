@@ -151,7 +151,7 @@ class TextDataset(Dataset):
 if args.verbose == 'on':
     print('Definindo o Encoder')
 def encoder(texto, tipo, palavra_para_numero):
-    return [palavra_para_numero[tipo].get(palavra, 1) for palavra in nltk.word_tokenize(texto)]  # usando o nltk para tokenizar
+    return [palavra_para_numero[tipo].get(palavra, 0) for palavra in nltk.word_tokenize(texto)]  # usando o nltk para tokenizar
     #return [palavra_para_numero[tipo].get(palavra, 0) for palavra in palavras]
 
 def compare_state_dicts(dict1, dict2):
@@ -198,8 +198,8 @@ if rep > num_epocas:
 elif rep <= 0:
     rep = 1
 debug = args.debug
-taxa_aprendizado_gerador = 0.001 # > 0.01 gerador da output 0
-taxa_aprendizado_discriminador = 0.001
+taxa_aprendizado_gerador = 0.01 # > 0.01 gerador da output 0
+taxa_aprendizado_discriminador = 0.01
 num_samples = args.num_samples #numero de amostras dentro da mesma época
 limiar = args.limiar / 100
 noise_dim = args.noise_dim
@@ -254,8 +254,8 @@ for tipo in types:
 
 if args.verbose == 'on':
     print('Definindo o objetivo de aprendizado')
-criterio_gerador = torch.nn.MSELoss()
-criterio_discriminador = torch.nn.MSELoss()
+criterio_gerador = torch.nn.BCELoss()
+criterio_discriminador = torch.nn.BCELoss()
 #criterio_discriminador = torch.nn.MSELoss()
 
 # Criando os modelos gerador,cnn e discriminador para cada tipo de texto
@@ -263,7 +263,7 @@ gerador = {}
 discriminador = {}
 for tipo in types:
     # Caminhos dos modelos
-    gerador_path = os.path.expanduser('gerador_' + tipo[1:] + '.pt')
+    gerador_path = os.path.expanduser('gerador_' + tipo[1:] + '_gan.pt')
 
     print('Verificando se o gerador existe para o tipo: ', tipo[1:])
     if os.path.exists(gerador_path):
@@ -321,7 +321,6 @@ def obter_rotulos_humano():
         except ValueError:
             print("Entrada inválida. Por favor, insira um número inteiro: 0 para FALSO ou 1 para REAL.")
 
-torch.autograd.set_detect_anomaly(True)
 print('Iniciando o treinamento')
 for tipo in types:
         if args.verbose == 'on':
@@ -330,7 +329,7 @@ for tipo in types:
         while epoca <= num_epocas:
            if (epoca % 100 == 0):
                print(f'Epoca multiplo de 100: salvando') 
-               torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
+               torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '_gan.pt'))
                torch.save(discriminador[tipo], os.path.expanduser('discriminador_' + tipo[1:] + '.pt'))
            gerador[tipo].train()
            discriminador[tipo].train()
@@ -488,7 +487,7 @@ if args.save_time == 'session':
     #if args.verbose == 'on':
     print('Salvando modelos')
     if args.save_mode == 'local':
-        torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
+        torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '_gan.pt'))
         torch.save(discriminador[tipo], os.path.expanduser('discriminador_' + tipo[1:] + '.pt'))
     elif args.save_mode == 'nuvem':
         gerador[tipo].save_pretrained('https://huggingface.co/' + 'gerador_' + tipo[1:], use_auth_token=token)
