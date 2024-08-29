@@ -350,7 +350,7 @@ for tipo in types:
            texto_falso,_ = gerador[tipo](prompt)
            print('Fazendo padding no texto_falso')
            if texto_falso.size(1) < max_length[tipo]:
-              texto_falso = F.pad(falso, (0,0, 0, max_length[tipo] - prompt.size(1),0,0))
+              texto_falso = F.pad(texto_falso, (0,0, 0, max_length[tipo] - texto_falso.size(1),0,0))
            print(f'Formato do texto falso: {texto_falso.shape} ')
 
            texto_falso.requires_grad_()
