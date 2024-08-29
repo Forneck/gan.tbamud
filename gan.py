@@ -340,14 +340,17 @@ for tipo in types:
            #min_length[tipo] = max_length[tipo]
            prompt_length = torch.randint(45, max_length[tipo] + 1, (1,)).item()
            prompt = torch.randint(0,len(numero_para_palavra[tipo]),(1,prompt_length))
-           print('Fazendo padding no prompt')
-           if prompt.size(1) < max_length[tipo]:
-               prompt = F.pad(prompt, (0, max_length[tipo] - prompt.size(1),0,0))
-           print(f'Prompt novo é {prompt.shape}')
+           #print('Fazendo padding no prompt')
+           #if prompt.size(1) < max_length[tipo]:
+           #    prompt = F.pad(prompt, (0, max_length[tipo] - prompt.size(1),0,0))
+           #print(f'Prompt novo é {prompt.shape}')
            decoded = decoder(prompt[0].tolist(),tipo,numero_para_palavra)
            print(f"O prompt usado foi: {decoded}")
 
            texto_falso,_ = gerador[tipo](prompt)
+           print('Fazendo padding no texto_falso')
+           if texto_falso.size(1) < max_length[tipo]:
+              texto_falso = F.pad(falso, (0,0, 0, max_length[tipo] - prompt.size(1),0,0))
            print(f'Formato do texto falso: {texto_falso.shape} ')
 
            texto_falso.requires_grad_()
