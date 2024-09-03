@@ -9,7 +9,7 @@ import json
 pasta = os.path.expanduser('~/mud/tba2024/lib/world')
 pasta_vocab = os.path.expanduser('~/mud/gan/v1/')
 types = ['.mob']
-UNK = 18011
+UNK = 17921
 def remover_caracteres_unicode(texto):
     texto_codificado = texto.encode('ascii', 'ignore')  # Codifica o texto para ASCII e ignora erros
     texto_decodificado = texto_codificado.decode()  # Decodifica o texto de volta para uma string
@@ -36,6 +36,28 @@ def dividir_em_sessoes(texto):
     texto = re.sub(r'~', ' ~ ', texto)
     texto = re.sub(r'-', ' - ', texto)
     texto = re.sub(r'\+', ' \+ ', texto)
+    texto = re.sub(r'\.', ' \. ', texto)
+    texto = re.sub(r'@n', ' @ n ', texto)
+    texto = re.sub(r'@d', ' @ d ', texto)
+    texto = re.sub(r'@b', ' @ b ', texto)
+    texto = re.sub(r'@g', ' @ g ', texto)
+    texto = re.sub(r'@c', ' @ c ', texto)
+    texto = re.sub(r'@r', ' @ r ', texto)
+    texto = re.sub(r'@m', ' @ m ', texto)
+    texto = re.sub(r'@y', ' @ y ', texto)
+    texto = re.sub(r'@w', ' @ w ', texto)
+    texto = re.sub(r'@p', ' @ p ', texto)
+    texto = re.sub(r'@o', ' @ o ', texto)
+    texto = re.sub(r'@D', ' @ D ', texto)
+    texto = re.sub(r'@B', ' @ B ', texto)
+    texto = re.sub(r'@G', ' @ G ', texto)
+    texto = re.sub(r'@C', ' @ C ', texto)
+    texto = re.sub(r'@R', ' @ r ', texto)
+    texto = re.sub(r'@M', ' @ M ', texto)
+    texto = re.sub(r'@Y', ' @ Y ', texto)
+    texto = re.sub(r'@W', ' @ W ', texto)
+    texto = re.sub(r'@P', ' @ P ', texto)
+    texto = re.sub(r'@O', ' @ O ', texto)
     sessoes = re.split(r'(?=#\d)', texto)
     # divide o texto em sessões
     if len(sessoes) > 1 and not sessoes[0].startswith('#'):

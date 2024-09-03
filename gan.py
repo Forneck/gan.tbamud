@@ -28,8 +28,8 @@ print(f'Inicio da sessão: {timestamp}')
 pasta = os.path.expanduser('~/gan/v1')
 # Tipos de arquivos que você quer gerar
 types = ['.mob']
-UNK = 18011 #Valor do token OOV - UNK
-FILLER = 18011
+UNK = 17921 #Valor do token OOV - UNK
+FILLER = 17921
 # Inicialize um dicionário para armazenar as estatísticas
 estatisticas = {
     'tipo': [],
@@ -266,7 +266,7 @@ for tipo in types:
     print("Formato dos textos falsos:", textos_falsos[tipo].shape)
     print('Padronizando o tamanho dos textos reais e falsos')
     max_length[tipo] = max(max([len(t) for t in textos_reais[tipo]]), max([len(t) for t in textos_falsos[tipo]]))
-    min_length[tipo] = 31
+    min_length[tipo] = 32
 
     if args.verbose == 'on':
         print(' Combinando os textos reais e os textos falsos')
@@ -419,7 +419,7 @@ for tipo in types:
 
            lambda_correcao = 0
            tamanho_obrigatorio = 0
-           max_length[tipo] = 51
+           max_length[tipo] = min_length[tipo]
            prompt_length = torch.randint(min_length[tipo] + lambda_correcao, (max_length[tipo] - tamanho_obrigatorio) + 1, (1,)).item()
            #prompt_length = torch.randint(3, 3 + 1, (1,)).item()
            prompt = torch.randint(0,FILLER,(1,prompt_length))
