@@ -28,8 +28,8 @@ print(f'Inicio da sessão: {timestamp}')
 pasta = os.path.expanduser('~/gan/v1')
 # Tipos de arquivos que você quer gerar
 types = ['.mob']
-UNK = 17921 #Valor do token OOV - UNK
-FILLER = 17921
+UNK = 17855 #Valor do token OOV - UNK
+FILLER = 17855
 # Inicialize um dicionário para armazenar as estatísticas
 estatisticas = {
     'tipo': [],
