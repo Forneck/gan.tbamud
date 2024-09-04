@@ -419,7 +419,6 @@ for tipo in types:
 
            lambda_correcao = 0
            tamanho_obrigatorio = 0
-           max_length[tipo] = min_length[tipo]
            prompt_length = torch.randint(min_length[tipo] + lambda_correcao, (max_length[tipo] - tamanho_obrigatorio) + 1, (1,)).item()
            #prompt_length = torch.randint(3, 3 + 1, (1,)).item()
            prompt = torch.randint(0,FILLER,(1,prompt_length))
