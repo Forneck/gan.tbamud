@@ -452,11 +452,11 @@ for tipo in types:
            if entrada.size(1) < prompt_unpad.size(1):
                print('\nentrada do gerador menor que saida esperada.')
                fill_size = prompt_unpad.size(1) - entrada.size(1)
-               entrada = pad_sequence([torch.cat((t, torch.full((fill_size,), UNK, dtype=torch.int64))) for t in entrada], batch_first=True)
+               entrada = pad_sequence([torch.cat((t, torch.full((fill_size,), 0, dtype=torch.int64))) for t in entrada], batch_first=True)
            elif prompt_unpad.size(1) < entrada.size(1):
                print('\nsaida esperada precisa de padding para ficar igual entrada')
                fill_size = entrada.size(1) - prompt_unpad.size(1)
-               prompt_unpad = pad_sequence([torch.cat((t, torch.full((fill_size,), UNK , dtype=torch.int64))) for t in prompt_unpad], batch_first=True)
+               prompt_unpad = pad_sequence([torch.cat((t, torch.full((fill_size,), 0 , dtype=torch.int64))) for t in prompt_unpad], batch_first=True)
 
            texto_falso,_ = gerador[tipo](entrada)
            print(f'Formato saida gerador {texto_falso.shape}')
