@@ -20,6 +20,7 @@ import torch.nn.functional as F
 #nltk.download('punkt')
 #nltk.download('averaged_perceptron_tagger')
 #nltk.download('stopwords')
+UNK = 17854
 print('Iniciando treinamento de qualidade do Gerador')
 agora = datetime.datetime.now()
 timestamp = agora.strftime("%H:%M:%S_%d-%m-%Y")
@@ -56,7 +57,7 @@ parser.add_argument('--num_epocas', type=int, default=150, help='Número de épo
 parser.add_argument('--num_samples', type=int, default=150, help='Número de amostras para cada época')
 parser.add_argument('--rep', type=int, default=1, help='Quantidade de repetições')
 parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais informações de saída')
-parser.add_argument('--modo', choices=['auto','manual', 'curto', 'longo'],default='curto', help='Modo do Prompt: auto, manual ou real')
+parser.add_argument('--modo', choices=['auto','manual', 'curto', 'longo'],default='longo', help='Modo do Prompt: auto, manual ou real')
 parser.add_argument('--debug', choices=['on', 'off'], default='off', help='Debug Mode')
 parser.add_argument('--treino', choices=['abs','rel'], default='abs', help='Treino Absoluto ou Relativo')
 parser.add_argument('--valor', choices=['auto','seq', 'cont'], default='seq', help='Valor é automatico ou sequencial')
@@ -65,6 +66,7 @@ parser.add_argument('--smax', choices=['on','off'], default = 'on', help='Softma
 args = parser.parse_args()
 
 smax = args.smax
+output = args.output
 if args.verbose == 'on':
     print('Definindo a arquitetura do modelo gerador')
 
@@ -114,7 +116,7 @@ class Gerador(nn.Module):
 if args.verbose == 'on':
     print('Definindo o Encoder')
 def encoder(texto, tipo, palavra_para_numero):
-    return [palavra_para_numero[tipo].get(palavra, 0) for palavra in nltk.word_tokenize(texto)]  # usando o nltk para tokenizar
+    return [palavra_para_numero[tipo].get(palavra, UNK) for palavra in nltk.word_tokenize(texto)]  # usando o nltk para tokenizar
     #return [palavra_para_numero[tipo].get(palavra, 0) for palavra in palavras]
 
 def compare_state_dicts(dict1, dict2):
@@ -180,10 +182,6 @@ treino = args.treino
 textos_falsos = {}
 valor = args.valor
 palavra_para_numero, numero_para_palavra,textos_reais = carregar_vocabulario(pasta, types)
-if modo == 'curto':
-    output = 'same'
-elif modo == 'longo':
-    output = 'next'
 
 aprendeu = 0
 

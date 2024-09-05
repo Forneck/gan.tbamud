@@ -9,7 +9,7 @@ import json
 pasta = os.path.expanduser('~/mud/tba2024/lib/world')
 pasta_vocab = os.path.expanduser('~/mud/gan/v1/')
 types = ['.mob']
-UNK = 17855
+UNK = 17854
 def remover_caracteres_unicode(texto):
     texto_codificado = texto.encode('ascii', 'ignore')  # Codifica o texto para ASCII e ignora erros
     texto_decodificado = texto_codificado.decode()  # Decodifica o texto de volta para uma string
@@ -35,8 +35,8 @@ def dividir_em_sessoes(texto):
     #Pre processamento do texto
     texto = re.sub(r'~', ' ~ ', texto)
     texto = re.sub(r'-', ' - ', texto)
-    texto = re.sub(r'\+', ' \+ ', texto)
-    texto = re.sub(r'\.', ' \. ', texto)
+    texto = re.sub(r'\+', ' + ', texto)
+    texto = re.sub(r'\.', ' . ', texto)
     texto = re.sub(r"'", " ' ", texto)
     texto = re.sub(r'"', ' " ', texto)
     texto = re.sub(r'@n', ' @ n ', texto)
