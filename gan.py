@@ -29,7 +29,7 @@ pasta = os.path.expanduser('~/gan/v1')
 # Tipos de arquivos que você quer gerar
 types = ['.mob']
 UNK = 17855 #Valor do token OOV - UNK
-FILLER = 17855
+FILLER = UNK
 # Inicialize um dicionário para armazenar as estatísticas
 estatisticas = {
     'tipo': [],
@@ -439,9 +439,10 @@ for tipo in types:
                print(f"O prompt usado foi: {decoded}")
 
            # Criando uma máscara de atenção
-           valid_token_count = entrada.size(1)  # Quantidade de tokens válidos antes do padding
-           mascara = torch.ones(entrada.size(0), valid_token_count).bool()  # Cria uma máscara de 1s
+           valid_token_count = prompt.size(1)  # Quantidade de tokens válidos antes do padding
+           mascara = torch.ones(prompt.size(0), valid_token_count).bool()  # Cria uma máscara de 1s
            mascara = F.pad(mascara, (0, max_length[tipo] - valid_token_count), value=False)  # Preenche o padding com False (0) 
+           #prompt = F.pad(prompt,(0, max_length[tipo] - valid_token_count))
            texto_falso,_ = gerador[tipo](prompt,mask=mascara)
 
            texto_falso.requires_grad_()
@@ -453,7 +454,7 @@ for tipo in types:
            if verbose == 'on':
                print(f'\nSaida Inicial do Gerador: {saida} \n')
 
-           
+           texto_falso = F.pad(texto_falso, (0,0,0,max_length[tipo] - valid_token_count,0,0)) 
            #Cria camada de ajuste saida do gerador para discriminador
            ajustador_dim = torch.nn.Linear(len(numero_para_palavra[tipo]),512)
            saida_ajustada = ajustador_dim(texto_falso)
@@ -471,8 +472,9 @@ for tipo in types:
 
               embedding_layer = torch.nn.Embedding(len(numero_para_palavra[tipo]), 512)
               
+              
               texto_real = embedding_layer(real)
-              #print(f'Tamanho da entrada do discriminador: {texto_real.shape}')
+              print(f'Tamanho da entrada do discriminador: real antes de embedding {real.shape} e depois {texto_real.shape}')
               saida_real,_ = discriminador[tipo](texto_real)
               saida_disc_real = torch.exp(saida_real)
               if verbose == 'on':
@@ -497,8 +499,7 @@ for tipo in types:
               otimizador_discriminador[tipo].step()
               otimizador_discriminador[tipo].zero_grad()
               if verbose == 'on':
-                 print('Calculando a perda do discriminador para texto gerado')
-              
+                 print('Calculando a perda do discriminador para texto gerado') 
               saida_falsa,_ = discriminador[tipo](saida_ajustada)
               saida_disc_falsa = torch.exp(saida_falsa)
               if verbose == 'on':
@@ -617,6 +618,7 @@ for tipo in types:
 
               
               if acuracia_gerador >= 100:
+                 texto_falso = F.pad(texto_falso, (0,0,0,max_length[tipo] - valid_token_count,0,0)) 
                  ajustada = ajustador_dim(texto_falso)
                  aval_falsa,_ = avaliador[tipo](ajustada)
                  saida_aval_falsa = torch.exp(aval_falsa)
@@ -638,13 +640,13 @@ for tipo in types:
                     lambda_humano = 2
                     # Combina as perdas (pode usar uma média ponderada ou outra combinação). Usando media ponderada
                     loss_ajustada = (lambda_humano * loss_humano_falso)
+                    if verbose == 'on':                                                  print(f'Perda do Avaliador para texto de treinamento: {loss_ajustada}')
                     loss_ajustada.backward()
                  else:
+                    if verbose == 'on':                                                  print(f'Perda do Avaliador para texto de treinamento: {loss_falso}')
                     loss_falso.backward()
               
                  loss_avaliador = loss_falso + loss_ajustada
-                 if verbose == 'on':
-                    print(f'Perda do Avaliador para texto de treinamento: {loss_avaliador}')
                  if verbose == 'on':
                     print('Atualizando os parâmetros do avaliador')
                  otimizador_avaliador[tipo].step()
