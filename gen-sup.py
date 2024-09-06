@@ -87,31 +87,43 @@ class Gerador(nn.Module):
         self.smax = smax
         if self.smax == 'on':
             self.softmax = nn.Softmax(dim=-1)
+    
+    def forward(self, input, hidden=None, mask=None):
+       # Embed the input
+       embedded = self.embedding(input)
 
-    def forward(self, input, hidden=None):
-        embedded = self.embedding(input)
-        output, hidden = self.lstm(embedded, hidden)
-        
-        # Cálculo da Atenção
-        attention_weights = F.softmax(self.attention(output), dim=-1)
-        
-        # Multiplica atenção com o output para obter o vetor de contexto
-        context_vector = torch.sum(attention_weights * output, dim=1)
-        
-        # Expande o vetor de contexto e combina com o output original
-        context_vector = context_vector.unsqueeze(1).repeat(1, output.size(1), 1)
-        combined = torch.cat((context_vector, output), dim=-1)
-        
-        # Passa pela camada para combinar a atenção
-        combined = self.attention_combine(combined)
-        
-        # Passa pela camada linear para previsão
-        output = self.linear(combined)
-        
-        if self.smax == 'on':
-            output = self.softmax(output)
-        
-        return output, hidden
+       # Pass through LSTM
+       output, hidden = self.lstm(embedded, hidden)
+
+       # Cálculo da Atenção (sem 'dim=-1' no final, que está incorreto)
+       attention_weights = self.attention(output)
+
+       # Aplica a máscara se estiver disponível
+       if mask is not None:
+           mask = mask[:, :attention_weights.size(1)].unsqueeze(-1).expand_as(attention_weights)
+           attention_weights = attention_weights.masked_fill(mask == 0, float('-inf'))  # Ignora tokens de padding
+
+       # Aplica softmax nos pesos de atenção
+       attention_weights = F.softmax(attention_weights, dim=-1)
+
+       # Multiplica atenção com o output para obter o vetor de contexto
+       context_vector = torch.sum(attention_weights * output, dim=1)
+
+       # Expande o vetor de contexto e combina com o output original
+       context_vector = context_vector.unsqueeze(1).repeat(1, output.size(1), 1)
+       combined = torch.cat((context_vector, output), dim=-1)
+
+       # Passa pela camada para combinar a atenção
+       combined = self.attention_combine(combined)
+
+       # Passa pela camada linear para previsão
+       output = self.linear(combined)
+
+       # Aplica softmax, se necessário
+       if self.smax == 'on':
+          output = self.softmax(output)
+
+       return output, hidden
 
 if args.verbose == 'on':
     print('Definindo o Encoder')
@@ -446,8 +458,11 @@ for tipo in types:
            if output == 'same':
                prompt_unpad = prompt_unpad.unsqueeze(0)
            
-           entrada = F.pad(entrada, ( 0, max_length[tipo] - entrada.size(1),0,0))
-           #entrada = pad_sequence([torch.cat((t, torch.full((fill_size,), 503, dtype=torch.int64))) for t in entrada], batch_first=True)
+           # Criando uma máscara de atenção
+           valid_token_count = entrada.size(1)  # Quantidade de tokens válidos antes do padding
+           mascara = torch.ones(entrada.size(0), valid_token_count).bool()  # Cria uma máscara de 1s
+           mascara = F.pad(mascara, (0, max_length[tipo] - valid_token_count), value=False)  # Preenche o padding com False (0)
+
            print(f'{entrada.shape} e {prompt_unpad.shape}')
            if entrada.size(1) < prompt_unpad.size(1):
                print('\nentrada do gerador menor que saida esperada.')
@@ -458,7 +473,7 @@ for tipo in types:
                fill_size = entrada.size(1) - prompt_unpad.size(1)
                prompt_unpad = pad_sequence([torch.cat((t, torch.full((fill_size,), 0 , dtype=torch.int64))) for t in prompt_unpad], batch_first=True)
 
-           texto_falso,_ = gerador[tipo](entrada)
+           texto_falso,_ = gerador[tipo](entrada, mask=mascara)
            print(f'Formato saida gerador {texto_falso.shape}')
            if smax == 'off':
                texto_falso = torch.softmax(texto_falso,dim=1)
