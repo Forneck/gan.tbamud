@@ -37,19 +37,6 @@ estatisticas = {
     }
 token = 'HF-AUTH-TOKEN'
 
-config = {
-    'seq',
-    'rep'
-}
-
-def limit_noise_dim(value):
-    ivalue = int(value)
-    if ivalue > 150:
-        ivalue = 150
-    if ivalue < 3:
-        ivalue = 3
-    return ivalue
-
 def limit_treshold(value):
     ivalue = int(value)
     if ivalue > 100:
@@ -66,12 +53,12 @@ parser.add_argument('--save_mode', choices=['local', 'nuvem'], default='local', 
 parser.add_argument('--save_time', choices=['epoch', 'session'], default='session', help='Escolha quando salvar o modelo')
 parser.add_argument('--num_epocas', type=int, default=63, help='Número de épocas para treinamento')
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
-parser.add_argument('--rep', type=int, default=1, help='Quantidade de repetições')
 parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais informações de saída')
+parser.add_argument('--max_prompt', type=int, default=264, help='Tamanho Maximo do Prompt')
+parser.add_argument('--min_prompt', type=int, default=32, help='Tamanho Maximo do Prompt')
 parser.add_argument('--debug', choices=['on', 'off'], default='off', help='Debug Mode')
 parser.add_argument('--smax', choices=['on','off'], default = 'on', help='Softmax direto no gerador?')
 parser.add_argument('--limiar', type=limit_treshold, default=75, help='Limiar para considerar texto verdadeiro ou falso. Valor entre 50 e 100')
-parser.add_argument('--noise_dim', type=limit_noise_dim, default=100, help='Tamanho do ruido. Valor entre 3 e 150')
 parser.add_argument('--human', choices=['off','disc','aval','on'], default='off', help='Human feedback')
 args = parser.parse_args()
 
@@ -136,19 +123,41 @@ class Gerador(nn.Module):
 
 if args.verbose == 'on':
     print('Definindo a arquitetura do modelo discriminador')
-class Discriminador(torch.nn.Module):
-    def __init__(self, hidden_dim):
+class Discriminador(torch.nn.Module):                                 
+    def __init__(self, hidden_dim):                                       
         super(Discriminador, self).__init__()
-        self.lstm = torch.nn.LSTM(hidden_dim, hidden_dim, batch_first=True)
-        self.pooling = torch.nn.AdaptiveAvgPool1d(1)
-        self.classifier = torch.nn.Linear(hidden_dim, 2)
+        
+        # Pooling antes da LSTM
+        self.pooling = torch.nn.AdaptiveAvgPool1d(128)
+        
+        # LSTM bidirecional
+        self.lstm = torch.nn.LSTM(hidden_dim, hidden_dim, batch_first=True, bidirectional=True)
+        
+        # Atenção simples
+        self.attention = torch.nn.Linear(hidden_dim * 2, 1)
+        
+        # Camada de classificação
+        self.classifier = torch.nn.Linear(hidden_dim * 2, 2)
+        
         self.log_softmax = torch.nn.LogSoftmax(dim=1)
 
     def forward(self, input, hidden=None):
+        # Pooling antes da LSTM
+        input = self.pooling(input.transpose(1, 2)).transpose(1, 2)
+        
+        # LSTM bidirecional
         output, hidden = self.lstm(input, hidden)
-        output = self.pooling(output.transpose(1, 2)).squeeze(2)
+        
+        # Atenção: cálculo de pesos de atenção
+        attention_weights = torch.nn.functional.softmax(self.attention(output), dim=1)
+        
+        # Aplicando atenção para pesar os estados ocultos
+        output = torch.sum(attention_weights * output, dim=1)
+        
+        # Classificação
         output = self.classifier(output)
         output = self.log_softmax(output)
+        
         return output, hidden
 
 if args.verbose == 'on':
@@ -245,18 +254,12 @@ def carregar_vocabulario(pasta, types):
 if args.verbose == 'on':
     print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
-rep = args.rep
-if rep > num_epocas:
-    rep = num_epocas
-elif rep <= 0:
-    rep = 1
 debug = args.debug
 taxa_aprendizado_gerador = 0.1 # > 0.01 gerador da output 0
-taxa_aprendizado_discriminador = 0.05
+taxa_aprendizado_discriminador = 0.005
 taxa_aprendizado_avaliador = 0.002
 num_samples = args.num_samples #numero de amostras dentro da mesma época
 limiar = args.limiar / 100
-noise_dim = args.noise_dim
 human = args.human
 textos_falsos = {}
 palavra_para_numero, numero_para_palavra,textos_reais = carregar_vocabulario(pasta, types)
@@ -390,6 +393,23 @@ def obter_rotulos_humano():
                 print("Entrada inválida. Por favor, insira 0 para FALSO ou 1 para REAL.")
         except ValueError:
             print("Entrada inválida. Por favor, insira um número inteiro: 0 para FALSO ou 1 para REAL.")
+max_prompt = {}
+min_prompt = {}
+for tipo in types:
+    max_prompt[tipo] = args.max_prompt
+    min_prompt[tipo] = args.min_prompt
+    if max_prompt[tipo] > max_length[tipo]:
+       max_prompt[tipo] = max_length[tipo]
+    elif max_prompt[tipo] < min_length[tipo]:
+       max_prompt[tipo] = min_length[tipo]
+    if min_prompt[tipo] < min_length[tipo]:
+       min_prompt[tipo] = min_length[tipo]
+    elif min_prompt[tipo] > max_prompt[tipo]:
+       min_prompt[tipo] = max_prompt[tipo]
+    if min_prompt[tipo] == max_prompt[tipo]:
+        min_prompt[tipo] = min_length[tipo]
+        max_prompt[tipo] = max_length[tipo]
+
 
 torch.autograd.set_detect_anomaly(True)
 print('Iniciando o treinamento')
@@ -430,8 +450,9 @@ for tipo in types:
 
            lambda_correcao = 0
            tamanho_obrigatorio = 0
-           prompt_length = torch.randint(min_length[tipo] + lambda_correcao, (max_length[tipo] - tamanho_obrigatorio) + 1, (1,)).item()
            #prompt_length = torch.randint(3, 3 + 1, (1,)).item()
+           #prompt_length = torch.randint(min_length[tipo] + lambda_correcao, (max_prompt[tipo] - tamanho_obrigatorio) + 1, (1,)).item()  
+           prompt_length = torch.randint(min_prompt[tipo] + lambda_correcao, (max_prompt[tipo] - tamanho_obrigatorio) + 1, (1,)).item()
            prompt = torch.randint(0,FILLER,(1,prompt_length))
            #prompt = torch.cat((obrigatorio1, prompt), dim=1)
            #prompt = torch.cat((prompt,obrigatorio2), dim=1)
