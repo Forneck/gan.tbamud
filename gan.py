@@ -468,11 +468,11 @@ for tipo in types:
            prompt = F.pad(prompt,(0, max_length[tipo] - valid_token_count))
            texto_falso,_ = gerador[tipo](prompt,mask=mascara)
            #slicing para cortar o ruido do padding: - substituido pela mask no discriminador (em teste)
-           #texto_falso = texto_falso[:, :valid_token_count, :]
            
            texto_falso.requires_grad_()
            texto_falso.retain_grad()
-           texto_falso_max = torch.argmax(texto_falso, dim=-1)
+           texto_falso_sliced = texto_falso[:, :valid_token_count, :]
+           texto_falso_max = torch.argmax(texto_falso_sliced, dim=-1)
            texto_falso_max = texto_falso_max.to(torch.int64)
            saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
            if verbose == 'on':
