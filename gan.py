@@ -148,7 +148,6 @@ class Discriminador(torch.nn.Module):
         # Aplica a máscara se estiver disponível
         if mask is not None:
             mask = mask.unsqueeze(-1)
-            print(f'Mascara {mask.shape} e AW {attention_weights.shape}')
             attention_weights = attention_weights * mask
 
 
@@ -255,7 +254,7 @@ if args.verbose == 'on':
     print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
 debug = args.debug
-taxa_aprendizado_gerador = 0.1 # > 0.01 gerador da output 0
+taxa_aprendizado_gerador = 0.05
 taxa_aprendizado_discriminador = 0.005
 taxa_aprendizado_avaliador = 0.002
 num_samples = args.num_samples #numero de amostras dentro da mesma época
@@ -477,7 +476,7 @@ for tipo in types:
            texto_falso_max = texto_falso_max.to(torch.int64)
            saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
            if verbose == 'on':
-               print(f'\nSaida Inicial do Gerador: {saida} \n De Forma {texto_falso.shape}')
+               print(f'\nSaida Inicial do Gerador: {saida} \n')
 
            #Cria camada de ajuste saida do gerador para discriminador
            ajustador_dim = torch.nn.Linear(len(numero_para_palavra[tipo]),512)
@@ -502,11 +501,10 @@ for tipo in types:
                       sequencia.pop()
                   sequencia_limpa.append(sequencia)
               real_limpo = torch.tensor(sequencia_limpa)
-              print(f'Formato do texto_real limpo: {real_limpo.shape}')
               real_tokens = real_limpo.size(1)  # Quantidade de tokens válidos antes do padding
               real_mask = torch.ones(real.size(0), real_tokens).bool()  # Cria uma máscara de 1s
               real_mask = F.pad(real_mask, (0, max_length[tipo] - real_tokens), value=False)  # Preenche o padding com False (0)
-              real_pad = F.pad(real_limpo, (0, max_length[tipo] - real_tokens), value=True)  # Preenche o padding com o token 1 # 
+              real_pad = F.pad(real_limpo, (0, max_length[tipo] - real_tokens), value=2)  # Preenche o padding com o token NULO 
               texto_real = embedding_layer(real_pad)
               saida_real,_ = discriminador[tipo](texto_real,mask=real_mask)
               saida_disc_real = torch.exp(saida_real)
@@ -533,7 +531,6 @@ for tipo in types:
               otimizador_discriminador[tipo].zero_grad()
               if verbose == 'on':
                  print('Calculando a perda do discriminador para texto gerado') 
-              print(f'Tamanho da entrada do discriminador: {saida_ajustada.shape}')
               saida_falsa,_ = discriminador[tipo](saida_ajustada,mask=mascara)
               saida_disc_falsa = torch.exp(saida_falsa)
               if verbose == 'on':
