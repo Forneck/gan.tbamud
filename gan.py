@@ -144,7 +144,7 @@ class Discriminador(torch.nn.Module):
         self.classifier = torch.nn.Linear(hidden_dim, 2)
         self.log_softmax = torch.nn.LogSoftmax(dim=1)
 
-    def forward(self, input, hidden=None, mask=None):
+    def forward(self, input, hidden=None):
         output, hidden = self.lstm(input, hidden)
         output = self.pooling(output.transpose(1, 2)).squeeze(2)
         output = self.classifier(output)
@@ -252,8 +252,8 @@ elif rep <= 0:
     rep = 1
 debug = args.debug
 taxa_aprendizado_gerador = 0.1 # > 0.01 gerador da output 0
-taxa_aprendizado_discriminador = 0.01
-taxa_aprendizado_avaliador = 0.001
+taxa_aprendizado_discriminador = 0.05
+taxa_aprendizado_avaliador = 0.002
 num_samples = args.num_samples #numero de amostras dentro da mesma época
 limiar = args.limiar / 100
 noise_dim = args.noise_dim

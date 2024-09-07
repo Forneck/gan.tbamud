@@ -101,7 +101,7 @@ class Gerador(nn.Module):
        # Aplica a máscara se estiver disponível
        if mask is not None:
            mask = mask[:, :attention_weights.size(1)].unsqueeze(-1).expand_as(attention_weights)
-           attention_weights = attention_weights.masked_fill(mask == 0, float('-inf'))  # Ignora tokens de padding
+           attention_weights = attention_weights * mask  # Ignora tokens de padding
 
        # Aplica softmax nos pesos de atenção
        attention_weights = F.softmax(attention_weights, dim=-1)
