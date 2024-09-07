@@ -105,14 +105,16 @@ class Gerador(nn.Module):
         
         # Cálculo da Atenção (sem 'dim=-1' no final, que está incorreto)
         attention_weights = self.attention(output)
+
         # Aplica a máscara se estiver disponível
         if mask is not None:
-            mask = mask[:, :attention_weights.size(1)].unsqueeze(-1).expand_as(attention_weights)
-            attention_weights = attention_weights.masked_fill(mask == 0, float('-inf'))
-            # Ignora tokens de padding
-        # Aplica softmax nos pesos de atenção
-        attention_weights = F.softmax(attention_weights, dim=-1)
+            mask = mask.unsqueeze(-1)
+            mas = mask.expand(-1,-1, output.size(-1))
+            attention_weights = attention_weights * mask
 
+            # Ignora tokens de padding
+        
+        attention_weights = F.softmax(attention_weights, dim=-1)
         
         # Multiplica atenção com o output para obter o vetor de contexto
         context_vector = torch.sum(attention_weights * output, dim=1)
@@ -142,7 +144,7 @@ class Discriminador(torch.nn.Module):
         self.classifier = torch.nn.Linear(hidden_dim, 2)
         self.log_softmax = torch.nn.LogSoftmax(dim=1)
 
-    def forward(self, input, hidden=None):
+    def forward(self, input, hidden=None, mask=None):
         output, hidden = self.lstm(input, hidden)
         output = self.pooling(output.transpose(1, 2)).squeeze(2)
         output = self.classifier(output)
@@ -438,16 +440,18 @@ for tipo in types:
            if verbose == 'on':
                print(f"O prompt usado foi: {decoded}")
 
+           
            # Criando uma máscara de atenção
            valid_token_count = prompt.size(1)  # Quantidade de tokens válidos antes do padding
            mascara = torch.ones(prompt.size(0), valid_token_count).bool()  # Cria uma máscara de 1s
            mascara = F.pad(mascara, (0, max_length[tipo] - valid_token_count), value=False)  # Preenche o padding com False (0) 
-           #prompt = F.pad(prompt,(0, max_length[tipo] - valid_token_count))
+           prompt = F.pad(prompt,(0, max_length[tipo] - valid_token_count))
            texto_falso,_ = gerador[tipo](prompt,mask=mascara)
+           #slicing para cortar o ruido do padding:
+           texto_falso = texto_falso[:, :valid_token_count, :]
 
            texto_falso.requires_grad_()
            texto_falso.retain_grad()
-           
            texto_falso_max = torch.argmax(texto_falso, dim=-1)
            texto_falso_max = texto_falso_max.to(torch.int64)
            saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
@@ -474,7 +478,6 @@ for tipo in types:
               
               
               texto_real = embedding_layer(real)
-              print(f'Tamanho da entrada do discriminador: real antes de embedding {real.shape} e depois {texto_real.shape}')
               saida_real,_ = discriminador[tipo](texto_real)
               saida_disc_real = torch.exp(saida_real)
               if verbose == 'on':
@@ -500,6 +503,7 @@ for tipo in types:
               otimizador_discriminador[tipo].zero_grad()
               if verbose == 'on':
                  print('Calculando a perda do discriminador para texto gerado') 
+              print(f'Tamanho da entrada do discriminador: {saida_ajustada.shape}')
               saida_falsa,_ = discriminador[tipo](saida_ajustada)
               saida_disc_falsa = torch.exp(saida_falsa)
               if verbose == 'on':
@@ -559,6 +563,7 @@ for tipo in types:
               print(f'Tipo {tipo}, Epoca {epoca} de {num_epocas}, Perda Discriminador {perda / 2}, Perda Gerador {perda_gerador}, Acuracia Gerador {acuracia_gerador}%')
 
               texto_falso,_ = gerador[tipo](prompt,mask=mascara)
+              texto_falso = texto_falso[:, :valid_token_count, :]
               texto_falso_max = torch.argmax(texto_falso, dim=-1)
               texto_falso_max = texto_falso_max.to(torch.int64) 
               saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
@@ -617,9 +622,10 @@ for tipo in types:
               otimizador_avaliador[tipo].zero_grad()
 
               
-              if acuracia_gerador >= 100:
+              if acuracia_gerador >= 1000:
                  texto_falso = F.pad(texto_falso, (0,0,0,max_length[tipo] - valid_token_count,0,0)) 
                  ajustada = ajustador_dim(texto_falso)
+                 print(f'Forma da Saida intermedisria ajustada: {ajustada.shape}')
                  aval_falsa,_ = avaliador[tipo](ajustada)
                  saida_aval_falsa = torch.exp(aval_falsa)
                  if verbose == 'on':
@@ -669,6 +675,7 @@ for tipo in types:
                  print(f'Perda do Gerador depois do Avaliador: {perda_gerador_nova}')
 
               texto_falso_final,_ = gerador[tipo](prompt,mask=mascara)
+              texto_falso_final = texto_falso_final[:, :valid_token_count, :]
               texto_falso_max = torch.argmax(texto_falso_final, dim=-1)
               texto_falso_max = texto_falso_max.to(torch.int64)
               saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
