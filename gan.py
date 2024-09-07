@@ -506,7 +506,8 @@ for tipo in types:
               real_tokens = real_limpo.size(1)  # Quantidade de tokens válidos antes do padding
               real_mask = torch.ones(real.size(0), real_tokens).bool()  # Cria uma máscara de 1s
               real_mask = F.pad(real_mask, (0, max_length[tipo] - real_tokens), value=False)  # Preenche o padding com False (0)
-              texto_real = embedding_layer(real)
+              real_pad = F.pad(real_limpo, (0, max_length[tipo] - real_tokens), value=True)  # Preenche o padding com o token 1 # 
+              texto_real = embedding_layer(real_pad)
               saida_real,_ = discriminador[tipo](texto_real,mask=real_mask)
               saida_disc_real = torch.exp(saida_real)
               if verbose == 'on':
@@ -610,7 +611,7 @@ for tipo in types:
               loss_humano_falso = 0
               loss_falso = 0
 
-              real_eb = embedding_layer(real)
+              real_eb = embedding_layer(real_pad)
               exemplo,_ = avaliador[tipo](real_eb)
               saida_aval_real = torch.exp(exemplo)
               if verbose == 'on':
