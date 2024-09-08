@@ -96,8 +96,8 @@ class Gerador(nn.Module):
         # Aplica a máscara se estiver disponível
         if mask is not None:
             mask = mask.unsqueeze(-1)
-            attention_weights = attention_weights * mask
             mask = mask.expand(-1,-1, output.size(-1))
+            attention_weights = attention_weights * mask
 
             # Ignora tokens de padding
         
@@ -254,9 +254,9 @@ if args.verbose == 'on':
     print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
 debug = args.debug
-taxa_aprendizado_gerador = 0.05
+taxa_aprendizado_gerador = 0.1
 taxa_aprendizado_discriminador = 0.005
-taxa_aprendizado_avaliador = 0.002
+taxa_aprendizado_avaliador = 0.001
 num_samples = args.num_samples #numero de amostras dentro da mesma época
 limiar = args.limiar / 100
 human = args.human
@@ -465,7 +465,7 @@ for tipo in types:
            valid_token_count = prompt.size(1)  # Quantidade de tokens válidos antes do padding
            mascara = torch.ones(prompt.size(0), valid_token_count).bool()  # Cria uma máscara de 1s
            mascara = F.pad(mascara, (0, max_length[tipo] - valid_token_count), value=False)  # Preenche o padding com False (0) 
-           prompt = F.pad(prompt,(0, max_length[tipo] - valid_token_count))
+           prompt = F.pad(prompt,(0, max_length[tipo] - valid_token_count), value=2) #Adiciona o token 2 $ de EOF no prompt gerado se menor que max_length[tipo]
            texto_falso,_ = gerador[tipo](prompt,mask=mascara)
            #slicing para cortar o ruido do padding: - substituido pela mask no discriminador (em teste)
            
@@ -590,70 +590,65 @@ for tipo in types:
               print(f'Tipo {tipo}, Epoca {epoca} de {num_epocas}, Perda Discriminador {perda / 2}, Perda Gerador {perda_gerador}, Acuracia Gerador {acuracia_gerador}%')
 
               texto_falso,_ = gerador[tipo](prompt,mask=mascara)
-              texto_falso = texto_falso[:, :valid_token_count, :]
+              texto_falso_int = texto_falso[:, :valid_token_count, :]
               texto_falso_max = torch.argmax(texto_falso, dim=-1)
               texto_falso_max = texto_falso_max.to(torch.int64) 
               saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
             
-              if acuracia_gerador == 100:
-                 print(f'Saida intermediaria do Gerador: {saida}\n')
-              else:
-                print(f'Gerador NÃO enganou Discriminador nesta epoca\n')
-           
-              loss_total = 0
-              loss_real = 0
-              loss_humano = 0
-              loss_avaliador = 0
-              loss_ajustada = 0
-              loss_humano_falso = 0
-              loss_falso = 0
+              if acuracia_gerador >= 1000: 
+                loss_total = 0
+                loss_real = 0
+                loss_humano = 0
+                loss_avaliador = 0
+                loss_ajustada = 0
+                loss_humano_falso = 0
+                loss_falso = 0
 
-              real_eb = embedding_layer(real_pad)
-              exemplo,_ = avaliador[tipo](real_eb)
-              saida_aval_real = torch.exp(exemplo)
-              if verbose == 'on':
-                  print(f'Saida do avaliador para texto de treinamento: {saida_aval_real} para Rotulo: {rotulos}')
-              #rotulo 0 texto de treinamento falso
-              if rotulos == 0:
-                  rotulos_adap = [[0,1]]
-              #rotulo 1 texto de treinamento verdadeiro
-              elif rotulos == 1:
-                  rotulos_adap = [[1,0]]
-              rotulos_adap= torch.tensor(rotulos_adap, dtype=torch.float32)
-              loss_real = criterio_avaliador(saida_aval_real, rotulos_adap)
-    
-              if human == 'on':
-                # Feedback humano para ajustar o avaliador
-                humano = obter_rotulos_humano()  # Suponha que isso retorne [1, 0] ou [0, 1]
-                humano = torch.tensor(humano, dtype=torch.float32)
-                # Calcula a diferença entre a saída do avaliador e o feedback humano
-                loss_humano = criterio_humano(saida_aval_real, humano)
+                real_eb = embedding_layer(real_pad)
+                exemplo,_ = avaliador[tipo](real_eb)
+                saida_aval_real = torch.exp(exemplo)
                 if verbose == 'on':
-                    print(f'A perda de ajuste é {loss_humano}')
-                lambda_humano = 2
-                # Combina as perdas (pode usar uma média ponderada ou outra combinação). Usando media ponderada
-                loss_total = (lambda_humano * loss_humano)
-                loss_total.backward()
-              else:
-                loss_real.backward()  
+                   print(f'Saida do avaliador para texto de treinamento: {saida_aval_real} para Rotulo: {rotulos}')
+                #rotulo 0 texto de treinamento falso
+                if rotulos == 0:
+                    rotulos_adap = [[0,1]]
+                #rotulo 1 texto de treinamento verdadeiro
+                elif rotulos == 1:
+                    rotulos_adap = [[1,0]]
+                rotulos_adap= torch.tensor(rotulos_adap, dtype=torch.float32)
+                loss_real = criterio_avaliador(saida_aval_real, rotulos_adap)
+    
+                if human == 'on':
+                  # Feedback humano para ajustar o avaliador
+                  humano = obter_rotulos_humano()  # Suponha que isso retorne [1, 0] ou [0, 1]
+                  humano = torch.tensor(humano, dtype=torch.float32)
+                  # Calcula a diferença entre a saída do avaliador e o feedback humano
+                  loss_humano = criterio_humano(saida_aval_real, humano)
+                  if verbose == 'on':
+                      print(f'A perda de ajuste é {loss_humano}')
+                  lambda_humano = 2
+                  # Combina as perdas (pode usar uma média ponderada ou outra combinação). Usando media ponderada
+                  loss_total = (lambda_humano * loss_humano)
+                  loss_total.backward()
+                else:
+                  loss_real.backward()  
 
-              loss_avaliador = loss_real + loss_total
+                loss_avaliador = loss_real + loss_total
 
-              if verbose == 'on':
-                  print(f'Perda do Avaliador para texto de treinamento: {loss_avaliador}')
+                if verbose == 'on':
+                    print(f'Perda do Avaliador para texto de treinamento: {loss_avaliador}')
               
-              if verbose == 'on':
-                  print('Atualizando os parâmetros do avaliador')
+                if verbose == 'on':
+                    print('Atualizando os parâmetros do avaliador')
 
-              otimizador_avaliador[tipo].step()
-              otimizador_avaliador[tipo].zero_grad()
+                otimizador_avaliador[tipo].step()
+                otimizador_avaliador[tipo].zero_grad()
 
               
               if acuracia_gerador >= 1000:
                  texto_falso = texto_falso[:, :valid_token_count, :]
-                 texto_falso = F.pad(texto_falso, (0,0,0,max_length[tipo] - valid_token_count,0,0)) 
+                 texto_falso = F.pad(texto_falso, (0,0,0,max_length[tipo] - valid_token_count,0,0),value=2) 
                  ajustada = ajustador_dim(texto_falso)
-                 print(f'Forma da Saida intermedisria ajustada: {ajustada.shape}')
                  aval_falsa,_ = avaliador[tipo](ajustada)
                  saida_aval_falsa = torch.exp(aval_falsa)
                  if verbose == 'on':
