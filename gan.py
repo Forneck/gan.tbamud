@@ -51,7 +51,7 @@ def limit_treshold(value):
 parser = argparse.ArgumentParser()
 parser.add_argument('--save_mode', choices=['local', 'nuvem'], default='local', help='Escolha onde salvar o modelo')
 parser.add_argument('--save_time', choices=['epoch', 'session'], default='session', help='Escolha quando salvar o modelo')
-parser.add_argument('--num_epocas', type=int, default=63, help='Número de épocas para treinamento')
+parser.add_argument('--num_epocas', type=int, default=5, help='Número de épocas para treinamento')
 parser.add_argument('--num_samples', type=int, default=1, help='Número de amostras para cada época')
 parser.add_argument('--verbose', choices=['on', 'off'], default='on', help='Mais informações de saída')
 parser.add_argument('--max_prompt', type=int, default=264, help='Tamanho Maximo do Prompt')
@@ -144,13 +144,14 @@ class Discriminador(torch.nn.Module):
         
         # Atenção: cálculo de pesos de atenção
         attention_weights = self.attention(output) 
-        attention_weights = torch.softmax(attention_weights, dim= 1)
+        #attention_weights = torch.softmax(attention_weights, dim= 1)
         # Aplica a máscara se estiver disponível
         if mask is not None:
             mask = mask.unsqueeze(-1)
             attention_weights = attention_weights * mask
 
-
+        attention_weights = F.softmax(attention_weights, dim=-1)
+   
         combined = torch.sum(attention_weights * output, dim=1)
         # Classificação
         combined = self.attention_combine(combined)
@@ -255,8 +256,8 @@ if args.verbose == 'on':
 num_epocas = args.num_epocas 
 debug = args.debug
 taxa_aprendizado_gerador = 0.1
-taxa_aprendizado_discriminador = 0.005
-taxa_aprendizado_avaliador = 0.001
+taxa_aprendizado_discriminador = 0.0001 #taxa_inicial 0.0001
+taxa_aprendizado_avaliador = 0.0001
 num_samples = args.num_samples #numero de amostras dentro da mesma época
 limiar = args.limiar / 100
 human = args.human
@@ -365,17 +366,17 @@ peso_inicio_discriminador = {}
 peso_inicio_avaliador = {}
 for tipo in types:
     otimizador_gerador[tipo] = torch.optim.Adam(gerador[tipo].parameters(), lr=taxa_aprendizado_gerador)
-    scheduler_gerador[tipo] = torch.optim.lr_scheduler.ExponentialLR(otimizador_gerador[tipo], gamma=0.99)
+    scheduler_gerador[tipo] = torch.optim.lr_scheduler.ExponentialLR(otimizador_gerador[tipo], gamma=0.50)
     #scheduler_gerador[tipo] = torch.optim.lr_scheduler.ReduceLROnPlateau(otimizador_gerador[tipo], mode='min', factor=0.1, patience=10)
     otimizador_discriminador[tipo] = torch.optim.Adam(discriminador[tipo].parameters(), lr=taxa_aprendizado_discriminador)
-    #scheduler_discriminador[tipo] = torch.optim.lr_scheduler.ExponentialLR(otimizador_discriminador[tipo], gamma=0.99)
-    scheduler_discriminador[tipo] = torch.optim.lr_scheduler.ReduceLROnPlateau(otimizador_discriminador[tipo], mode='min', factor=0.1, patience=10)
+    scheduler_discriminador[tipo] = torch.optim.lr_scheduler.ExponentialLR(otimizador_discriminador[tipo], gamma=0.90)
+    #scheduler_discriminador[tipo] = torch.optim.lr_scheduler.ReduceLROnPlateau(otimizador_discriminador[tipo], mode='min', factor=0.1, patience=2)
     otimizador_avaliador[tipo] = torch.optim.Adam(avaliador[tipo].parameters(), lr=taxa_aprendizado_avaliador)
     peso_inicio[tipo] = {key: value.clone() for key, value in gerador[tipo].state_dict().items()}
     peso_inicio_discriminador[tipo] = {key: value.clone() for key, value in discriminador[tipo].state_dict().items()}
     peso_inicio_avaliador[tipo] = {key: value.clone() for key, value in avaliador[tipo].state_dict().items()}
     if debug == 'on':
-        print(f'Pesos antes do treinamento:\n Gerador: {peso_inicio[tipo]} \n Discriminador: {peso_inicio_discriminador[tipo]}\n Avaliador: {peso_inicio_avaliador[tipo]}')
+        print(f'Pesos antes do treinamento:\n Gerador: {peso_inicio[tipo]} \n Discriminador: {peso_inicio_discriminador[tipo]}')
 
 def obter_rotulos_humano():
     while True:
@@ -385,9 +386,9 @@ def obter_rotulos_humano():
         try:
             classificacao = int(classificacao)
             if classificacao == 0:
-                return [[0, 1]]  # Rótulo para texto falso
+                return [[0.1, 0.9]]  # Rótulo para texto falso
             elif classificacao == 1:
-                return [[1, 0]]  # Rótulo para texto real
+                return [[0.9, 0.1]]  # Rótulo para texto real
             else:
                 print("Entrada inválida. Por favor, insira 0 para FALSO ou 1 para REAL.")
         except ValueError:
@@ -467,7 +468,6 @@ for tipo in types:
            mascara = F.pad(mascara, (0, max_length[tipo] - valid_token_count), value=False)  # Preenche o padding com False (0) 
            prompt = F.pad(prompt,(0, max_length[tipo] - valid_token_count), value=2) #Adiciona o token 2 $ de EOF no prompt gerado se menor que max_length[tipo]
            texto_falso,_ = gerador[tipo](prompt,mask=mascara)
-           #slicing para cortar o ruido do padding: - substituido pela mask no discriminador (em teste)
            
            texto_falso.requires_grad_()
            texto_falso.retain_grad()
@@ -506,16 +506,16 @@ for tipo in types:
               real_mask = F.pad(real_mask, (0, max_length[tipo] - real_tokens), value=False)  # Preenche o padding com False (0)
               real_pad = F.pad(real_limpo, (0, max_length[tipo] - real_tokens), value=2)  # Preenche o padding com o token NULO 
               texto_real = embedding_layer(real_pad)
-              saida_real,_ = discriminador[tipo](texto_real,mask=real_mask)
+              saida_real,_ = discriminador[tipo](texto_real)
               saida_disc_real = torch.exp(saida_real)
               if verbose == 'on':
                  print(f'Saida do discriminador para texto de treinamento: {saida_disc_real} com rotulo de treinamento: {rotulos}')
               #rotulo 0 texto de treinamento falso
               if rotulos == 0:
-                  rotulos_reshaped = [[0,1]]
+                  rotulos_reshaped = [[0.1,0.9]]
               #rotulo 1 texto de treinamento verdadeiro
               elif rotulos == 1:
-                  rotulos_reshaped = [[1,0]]
+                  rotulos_reshaped = [[0.9,0.1]]
             
               rotulos_reshaped = torch.tensor(rotulos_reshaped, dtype=torch.float32)
               perda_real = criterio_discriminador(saida_disc_real, rotulos_reshaped)
@@ -531,12 +531,12 @@ for tipo in types:
               otimizador_discriminador[tipo].zero_grad()
               if verbose == 'on':
                  print('Calculando a perda do discriminador para texto gerado') 
-              saida_falsa,_ = discriminador[tipo](saida_ajustada,mask=mascara)
+              saida_falsa,_ = discriminador[tipo](saida_ajustada)
               saida_disc_falsa = torch.exp(saida_falsa)
               if verbose == 'on':
                   print(f'Saida do Discriminador para texto gerado: {saida_disc_falsa}')
               #Invertendo rotulos, texto falso do gerador no discriminador
-              rotulos_reshaped = [[0,1]]
+              rotulos_reshaped = [[0.1,0.9]]
               rotulos_reshaped = torch.tensor(rotulos_reshaped, dtype=torch.float32)
               perda_falso = criterio_discriminador(saida_disc_falsa,rotulos_reshaped)
               
@@ -568,7 +568,7 @@ for tipo in types:
                   print('Atualizando os parâmetros do Discriminador para texto gerado')
               otimizador_discriminador[tipo].step()
               otimizador_discriminador[tipo].zero_grad()
-              #scheduler_discriminador[tipo].step(perda_falso)
+              #scheduler_discriminador[tipo].step()
 
               if verbose == 'on':
                   print('Invertendo os rotulos e calculando a perda do gerador')
@@ -590,12 +590,14 @@ for tipo in types:
               print(f'Tipo {tipo}, Epoca {epoca} de {num_epocas}, Perda Discriminador {perda / 2}, Perda Gerador {perda_gerador}, Acuracia Gerador {acuracia_gerador}%')
 
               texto_falso,_ = gerador[tipo](prompt,mask=mascara)
-              texto_falso_int = texto_falso[:, :valid_token_count, :]
+              #texto_falso_int = texto_falso[:, :valid_token_count, :]
               texto_falso_max = torch.argmax(texto_falso, dim=-1)
               texto_falso_max = texto_falso_max.to(torch.int64) 
               saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
-            
-              if acuracia_gerador >= 1000: 
+              print(f'Saida Intermediaria: {saida}')
+              
+              if acuracia_gerador >= 0: 
+                print('Treinando o Avaliador')   
                 loss_total = 0
                 loss_real = 0
                 loss_humano = 0
@@ -611,10 +613,10 @@ for tipo in types:
                    print(f'Saida do avaliador para texto de treinamento: {saida_aval_real} para Rotulo: {rotulos}')
                 #rotulo 0 texto de treinamento falso
                 if rotulos == 0:
-                    rotulos_adap = [[0,1]]
+                    rotulos_adap = [[0.1,0.9]]
                 #rotulo 1 texto de treinamento verdadeiro
                 elif rotulos == 1:
-                    rotulos_adap = [[1,0]]
+                    rotulos_adap = [[0.9,0.1]]
                 rotulos_adap= torch.tensor(rotulos_adap, dtype=torch.float32)
                 loss_real = criterio_avaliador(saida_aval_real, rotulos_adap)
     
@@ -645,16 +647,14 @@ for tipo in types:
                 otimizador_avaliador[tipo].zero_grad()
 
               
-              if acuracia_gerador >= 1000:
-                 texto_falso = texto_falso[:, :valid_token_count, :]
-                 texto_falso = F.pad(texto_falso, (0,0,0,max_length[tipo] - valid_token_count,0,0),value=2) 
+              if acuracia_gerador >= 50:
                  ajustada = ajustador_dim(texto_falso)
                  aval_falsa,_ = avaliador[tipo](ajustada)
                  saida_aval_falsa = torch.exp(aval_falsa)
                  if verbose == 'on':
                     print(f'Saida do Avaliador para texto gerado: {saida_aval_falsa}')
                  #Invertendo rotulos, texto falso do gerador no avaliador
-                 rotulos_adap = [[0,1]]
+                 rotulos_adap = [[0.1,0.9]]
                  rotulos_adap = torch.tensor(rotulos_adap, dtype=torch.float32)
                  loss_falso = criterio_avaliador(saida_aval_falsa,rotulos_adap)
 
@@ -669,10 +669,12 @@ for tipo in types:
                     lambda_humano = 2
                     # Combina as perdas (pode usar uma média ponderada ou outra combinação). Usando media ponderada
                     loss_ajustada = (lambda_humano * loss_humano_falso)
-                    if verbose == 'on':                                                  print(f'Perda do Avaliador para texto de treinamento: {loss_ajustada}')
+                    if verbose == 'on':
+                        print(f'Perda do Avaliador para texto de treinamento: {loss_ajustada}')
                     loss_ajustada.backward()
                  else:
-                    if verbose == 'on':                                                  print(f'Perda do Avaliador para texto de treinamento: {loss_falso}')
+                    if verbose == 'on':
+                       print(f'Perda do Avaliador para texto de treinamento: {loss_falso}')
                     loss_falso.backward()
               
                  loss_avaliador = loss_falso + loss_ajustada
@@ -756,6 +758,6 @@ for tipo in types:
     total_param_gen = contar_parametros(gerador[tipo])
     total_param_disc = contar_parametros(discriminador[tipo])
     total_param_aval = contar_parametros(avaliador[tipo])
-    total_parametros = total_param_gen + total_param_disc + total_param_aval
+    total_parametros = total_param_gen + total_param_disc  + total_param_aval
 
-    print(f"O modelo gerador para o {tipo}  possui {total_param_gen} parâmetros.\nE o modelo discriminador possui {total_param_disc}.\n O modelo avaliador para o {tipo} possui {total_param_aval}.\nO total dos parametros é {total_parametros}.")
+    print(f"O modelo gerador para o {tipo}  possui {total_param_gen} parâmetros.\nE o modelo discriminador possui {total_param_disc}.\nAvaliador: {total_param_aval} \n O total dos parametros é {total_parametros}.")
