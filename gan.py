@@ -255,8 +255,8 @@ if args.verbose == 'on':
     print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
 debug = args.debug
-taxa_aprendizado_gerador = 0.0001
-taxa_aprendizado_discriminador = 0.0002 #taxa_inicial 0.0001
+taxa_aprendizado_gerador = 0.00001
+taxa_aprendizado_discriminador = 0.0003 #taxa_inicial 0.0001
 taxa_aprendizado_avaliador = 0.0001
 num_samples = args.num_samples #numero de amostras dentro da mesma época
 limiar = args.limiar / 100
@@ -561,8 +561,8 @@ for tipo in types:
                   print(f'Perda do Discriminador para texto gerado: {perda_falso}')
                   perda_falso.backward()
 
+              passagem = passagem + 1
               if saida_disc_falsa[:,0] > saida_disc_falsa[:,1]:
-                  passagem = passagem + 1
                   acuracia_gerador = acuracia_gerador + 50
               #perda = perda + perda_falso
               perda = perda_falso + perda_total + perda
@@ -581,8 +581,8 @@ for tipo in types:
               rotulos_invertidos = [[1,0]]
               rotulos_invertidos = torch.tensor(rotulos_invertidos, dtype=torch.float32)
               perda_gerador = criterio_gerador(saida_nova,rotulos_invertidos)
+              passagem = passagem + 1
               if saida_nova[:,0] > saida_nova[:,1]:
-                  passagem = passagem + 1
                   acuracia_gerador = acuracia_gerador + 50
               
               perda_gerador.backward()
@@ -661,8 +661,8 @@ for tipo in types:
                  rotulos_adap = [[0.1,0.9]]
                  rotulos_adap = torch.tensor(rotulos_adap, dtype=torch.float32)
                  loss_falso = criterio_avaliador(saida_aval_falsa,rotulos_adap)
+                 passagem = passagem + 1
                  if saida_aval_falsa[:,0] > saida_aval_falsa[:,1]:
-                     passagem = passagem + 1
                      acuracia_gerador = acuracia_gerador + 50
 
                  if human == 'on' or human == 'aval' :
@@ -698,8 +698,8 @@ for tipo in types:
                  rotulos_invertidos = [[1,0]]
                  rotulos_invertidos = torch.tensor(rotulos_invertidos, dtype=torch.float32)
                  perda_gerador_nova = criterio_gerador(saida_aval_nova,rotulos_invertidos)
+                 passagem = passagem + 1
                  if saida_aval_nova[:,0] > saida_aval_nova[:,1]:
-                     passagem = passagem + 1
                      acuracia_gerador = acuracia_gerador + 50
                      print(f'Gerador enganou Avaliador')
               
@@ -713,7 +713,7 @@ for tipo in types:
               texto_falso_max = torch.argmax(texto_falso_final, dim=-1)
               texto_falso_max = texto_falso_max.to(torch.int64)
               saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
-              print(f'Saida final: {saida} com Acuracia Final de {acuracia_gerador/passagem} para {passagem} passagens.\n')
+              print(f'Saida final: {saida}\n Com Acuracia Final de {acuracia_gerador} para {passagem} passagens.\n')
 
 
 
