@@ -255,8 +255,8 @@ if args.verbose == 'on':
     print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
 debug = args.debug
-taxa_aprendizado_gerador = 0.1
-taxa_aprendizado_discriminador = 0.0001 #taxa_inicial 0.0001
+taxa_aprendizado_gerador = 0.0001
+taxa_aprendizado_discriminador = 0.0002 #taxa_inicial 0.0001
 taxa_aprendizado_avaliador = 0.0001
 num_samples = args.num_samples #numero de amostras dentro da mesma época
 limiar = args.limiar / 100
@@ -492,6 +492,7 @@ for tipo in types:
               perda_humano = 0
               perda_total = 0
               perda_gerador = 0
+              passagem = 0
 
               embedding_layer = torch.nn.Embedding(len(numero_para_palavra[tipo]), 512)
               sequencia_limpa = []
@@ -561,6 +562,7 @@ for tipo in types:
                   perda_falso.backward()
 
               if saida_disc_falsa[:,0] > saida_disc_falsa[:,1]:
+                  passagem = passagem + 1
                   acuracia_gerador = acuracia_gerador + 50
               #perda = perda + perda_falso
               perda = perda_falso + perda_total + perda
@@ -580,9 +582,11 @@ for tipo in types:
               rotulos_invertidos = torch.tensor(rotulos_invertidos, dtype=torch.float32)
               perda_gerador = criterio_gerador(saida_nova,rotulos_invertidos)
               if saida_nova[:,0] > saida_nova[:,1]:
+                  passagem = passagem + 1
                   acuracia_gerador = acuracia_gerador + 50
               
               perda_gerador.backward()
+              otimizador_discriminador[tipo].zero_grad()
               otimizador_gerador[tipo].step()
               otimizador_gerador[tipo].zero_grad()
               scheduler_gerador[tipo].step()
@@ -647,7 +651,7 @@ for tipo in types:
                 otimizador_avaliador[tipo].zero_grad()
 
               
-              if acuracia_gerador >= 50:
+              if acuracia_gerador >= 0:
                  ajustada = ajustador_dim(texto_falso)
                  aval_falsa,_ = avaliador[tipo](ajustada)
                  saida_aval_falsa = torch.exp(aval_falsa)
@@ -657,6 +661,9 @@ for tipo in types:
                  rotulos_adap = [[0.1,0.9]]
                  rotulos_adap = torch.tensor(rotulos_adap, dtype=torch.float32)
                  loss_falso = criterio_avaliador(saida_aval_falsa,rotulos_adap)
+                 if saida_aval_falsa[:,0] > saida_aval_falsa[:,1]:
+                     passagem = passagem + 1
+                     acuracia_gerador = acuracia_gerador + 50
 
                  if human == 'on' or human == 'aval' :
                     # Feedback humano para ajustar o avaliador
@@ -674,7 +681,7 @@ for tipo in types:
                     loss_ajustada.backward()
                  else:
                     if verbose == 'on':
-                       print(f'Perda do Avaliador para texto de treinamento: {loss_falso}')
+                       print(f'Perda do Avaliador para texto gerado apos treinamento: {loss_falso}')
                     loss_falso.backward()
               
                  loss_avaliador = loss_falso + loss_ajustada
@@ -692,7 +699,9 @@ for tipo in types:
                  rotulos_invertidos = torch.tensor(rotulos_invertidos, dtype=torch.float32)
                  perda_gerador_nova = criterio_gerador(saida_aval_nova,rotulos_invertidos)
                  if saida_aval_nova[:,0] > saida_aval_nova[:,1]:
+                     passagem = passagem + 1
                      acuracia_gerador = acuracia_gerador + 50
+                     print(f'Gerador enganou Avaliador')
               
                  perda_gerador_nova.backward()
                  otimizador_gerador[tipo].step()
@@ -704,7 +713,7 @@ for tipo in types:
               texto_falso_max = torch.argmax(texto_falso_final, dim=-1)
               texto_falso_max = texto_falso_max.to(torch.int64)
               saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
-              print(f'Saida final: {saida}\n')
+              print(f'Saida final: {saida} com Acuracia Final de {acuracia_gerador/passagem} para {passagem} passagens.\n')
 
 
 
