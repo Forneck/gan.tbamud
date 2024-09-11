@@ -409,9 +409,9 @@ def obter_rotulos_humano():
         try:
             classificacao = int(classificacao)
             if classificacao == 0:
-                return [[0.1, 0.9]]  # Rótulo para texto falso
+                return [[0.05, 0.95]]  # Rótulo para texto falso
             elif classificacao == 1:
-                return [[0.9, 0.1]]  # Rótulo para texto real
+                return [[0.95, 0.05]]  # Rótulo para texto real
             else:
                 print("Entrada inválida. Por favor, insira 0 para FALSO ou 1 para REAL.")
         except ValueError:
@@ -531,16 +531,16 @@ for tipo in types:
               real_mask = F.pad(real_mask, (0, max_length[tipo] - real_tokens), value=False)  # Preenche o padding com False (0)
               real_pad = F.pad(real_limpo, (0, max_length[tipo] - real_tokens), value=2)  # Preenche o padding com o token NULO 
               texto_real = embedding_layer(real_pad)
-              saida_real,_ = discriminador[tipo](texto_real)
+              saida_real,_ = discriminador[tipo](texto_real,mask=real_mask)
               saida_disc_real = torch.exp(saida_real)
               if verbose == 'on':
                  print(f'Saida do discriminador para texto de treinamento: {saida_disc_real} com rotulo de treinamento: {rotulos}')
               #rotulo 0 texto de treinamento falso
               if rotulos == 0:
-                  rotulos_reshaped = [[0.1,0.9]]
+                  rotulos_reshaped = [[0.05,0.95]]
               #rotulo 1 texto de treinamento verdadeiro
               elif rotulos == 1:
-                  rotulos_reshaped = [[0.9,0.1]]
+                  rotulos_reshaped = [[0.95,0.05]]
             
               rotulos_reshaped = torch.tensor(rotulos_reshaped, dtype=torch.float32)
               perda_real = criterio_discriminador(saida_disc_real, rotulos_reshaped)
@@ -556,12 +556,12 @@ for tipo in types:
               otimizador_discriminador[tipo].zero_grad()
               if verbose == 'on':
                  print('Calculando a perda do discriminador para texto gerado') 
-              saida_falsa,_ = discriminador[tipo](saida_ajustada)
+              saida_falsa,_ = discriminador[tipo](saida_ajustada,mask=mascara)
               saida_disc_falsa = torch.exp(saida_falsa)
               if verbose == 'on':
                   print(f'Saida do Discriminador para texto gerado: {saida_disc_falsa}')
               #Invertendo rotulos, texto falso do gerador no discriminador
-              rotulos_reshaped = [[0.1,0.9]]
+              rotulos_reshaped = [[0.05,0.95]]
               rotulos_reshaped = torch.tensor(rotulos_reshaped, dtype=torch.float32)
               perda_falso = criterio_discriminador(saida_disc_falsa,rotulos_reshaped)
               
@@ -599,8 +599,8 @@ for tipo in types:
 
               if verbose == 'on':
                   print('Invertendo os rotulos e calculando a perda do gerador')
-              #saida_falsa,_ = discriminador[tipo](saida_ajustada.detach(),mask=mascara)
-              saida_falsa,_ = discriminador[tipo](saida_ajustada.detach())
+              saida_falsa,_ = discriminador[tipo](saida_ajustada.detach(),mask=mascara)
+              #saida_falsa,_ = discriminador[tipo](saida_ajustada.detach())
               saida_nova = torch.exp(saida_falsa)
               if verbose == 'on':
                   print(f'Saida do discriminador apos treinamento: {saida_nova}')
@@ -644,10 +644,10 @@ for tipo in types:
                    print(f'Saida do avaliador para texto de treinamento: {saida_aval_real} para Rotulo: {rotulos}')
                 #rotulo 0 texto de treinamento falso
                 if rotulos == 0:
-                    rotulos_adap = [[0.1,0.9]]
+                    rotulos_adap = [[0.05,0.95]]
                 #rotulo 1 texto de treinamento verdadeiro
                 elif rotulos == 1:
-                    rotulos_adap = [[0.9,0.1]]
+                    rotulos_adap = [[0.95,0.05]]
                 rotulos_adap= torch.tensor(rotulos_adap, dtype=torch.float32)
                 loss_real = criterio_avaliador(saida_aval_real, rotulos_adap)
     
@@ -685,7 +685,7 @@ for tipo in types:
                  if verbose == 'on':
                     print(f'Saida do Avaliador para texto gerado: {saida_aval_falsa}')
                  #Invertendo rotulos, texto falso do gerador no avaliador
-                 rotulos_adap = [[0.1,0.9]]
+                 rotulos_adap = [[0.05,0.95]]
                  rotulos_adap = torch.tensor(rotulos_adap, dtype=torch.float32)
                  loss_falso = criterio_avaliador(saida_aval_falsa,rotulos_adap)
                  passagem = passagem + 1
