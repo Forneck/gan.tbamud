@@ -72,7 +72,7 @@ class Gerador(nn.Module):
         super(Gerador, self).__init__()
         
         self.embedding = nn.Embedding(input_dim, embedding_dim)
-        self.lstm = nn.LSTM(embedding_dim, hidden_dim, bidirectional=True, batch_first=True)
+        self.lstm = nn.LSTM(embedding_dim, hidden_dim, num_layers=2,dropout=0.3, batch_first=True, bidirectional=True)
         
         # Camada de Atenção
         self.attention = nn.Linear(hidden_dim * 2, hidden_dim * 2)
@@ -123,47 +123,70 @@ class Gerador(nn.Module):
 
 if args.verbose == 'on':
     print('Definindo a arquitetura do modelo discriminador')
-class Discriminador(torch.nn.Module):                                 
-    def __init__(self, hidden_dim):                                       
+class Discriminador(nn.Module):
+    def __init__(self, hidden_dim):
         super(Discriminador, self).__init__()
-        
+
         # LSTM bidirecional
-        self.lstm = torch.nn.LSTM(hidden_dim, hidden_dim, batch_first=True, bidirectional=True)
-        
-        # Atenção simples
-        self.attention = torch.nn.Linear(hidden_dim * 2, 1)
-        self.attention_combine = nn.Linear(hidden_dim * 2, hidden_dim * 2)
+        self.lstm = nn.LSTM(hidden_dim, hidden_dim, batch_first=True, bidirectional=True)
 
-        # Camada de classificação
-        self.classifier = torch.nn.Linear(hidden_dim * 2, 2)
-        
-        self.log_softmax = torch.nn.LogSoftmax(dim=1)
+        # Camadas convolucionais
+        self.conv1 = nn.Conv1d(hidden_dim * 2, 128, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv1d(128, 64, kernel_size=3, padding=1)
 
-    def forward(self, input, hidden=None,mask=None):
-        output, hidden = self.lstm(input, hidden)
-        
+        # Normalização
+        self.batch_norm1 = nn.BatchNorm1d(128)
+        self.batch_norm2 = nn.BatchNorm1d(64)
+
+        # Dropout
+        self.dropout = nn.Dropout(0.5)
+
+        # Camada de atenção simples
+        self.attention = nn.Linear(64, 1)
+
+        # Classificação final
+        self.classifier = nn.Linear(64, 2)
+        self.log_softmax = nn.LogSoftmax(dim=1)
+
+    def forward(self, input, hidden=None, mask=None):
+        # Passa pela LSTM bidirecional
+        lstm_out, hidden = self.lstm(input, hidden)
+
+        # Transpõe para (batch_size, hidden_dim * 2, seq_len) para usar convolução
+        lstm_out = lstm_out.transpose(1, 2)
+
+        # Camadas convolucionais
+        conv_out = F.relu(self.batch_norm1(self.conv1(lstm_out)))
+        conv_out = F.relu(self.batch_norm2(self.conv2(conv_out)))
+
+        # Transpõe de volta para (batch_size, seq_len, hidden_dim)
+        conv_out = conv_out.transpose(1, 2)
+
         # Atenção: cálculo de pesos de atenção
-        attention_weights = self.attention(output) 
-        #attention_weights = torch.softmax(attention_weights, dim= 1)
+        attention_weights = self.attention(conv_out)
+        attention_weights = F.softmax(attention_weights, dim=1)
+
         # Aplica a máscara se estiver disponível
         if mask is not None:
             mask = mask.unsqueeze(-1)
             attention_weights = attention_weights * mask
 
-        attention_weights = F.softmax(attention_weights, dim=-1)
-   
-        combined = torch.sum(attention_weights * output, dim=1)
-        # Classificação
-        combined = self.attention_combine(combined)
+        # Combina as saídas com os pesos de atenção
+        combined = torch.sum(attention_weights * conv_out, dim=1)
+
+        # Dropout
+        combined = self.dropout(combined)
+
+        # Classificação final
         output = self.classifier(combined)
         output = self.log_softmax(output)
-        
+
         return output, hidden
 
 if args.verbose == 'on':
     print('Definindo a arquitetura do modelo avaliador')
 class Avaliador(nn.Module):
-    def __init__(self, hidden_dim, output_dim=2, num_heads=2, pooling_output_size=1):
+    def __init__(self, hidden_dim, output_dim=2, num_heads=4, pooling_output_size=1):
         super(Avaliador, self).__init__()
         
         self.lstm = nn.LSTM(hidden_dim, hidden_dim, batch_first=True, bidirectional=True)
@@ -255,9 +278,9 @@ if args.verbose == 'on':
     print('Definindo os parâmetros de treinamento')
 num_epocas = args.num_epocas 
 debug = args.debug
-taxa_aprendizado_gerador = 0.00001
-taxa_aprendizado_discriminador = 0.0003 #taxa_inicial 0.0001
-taxa_aprendizado_avaliador = 0.0001
+taxa_aprendizado_gerador = 0.1 #inicial 0.01 atual 0.00001
+taxa_aprendizado_discriminador = 0.0005 #taxa_inicial 0.0001 -atual 0.0004
+taxa_aprendizado_avaliador = 0.0003 # inicial 0.0001
 num_samples = args.num_samples #numero de amostras dentro da mesma época
 limiar = args.limiar / 100
 human = args.human
@@ -418,8 +441,8 @@ for tipo in types:
             print(f'Tipo {tipo} - Treinamento')      
         epoca = 1
         while epoca <= num_epocas:
-           if (epoca % 50 == 0):
-               print(f'Epoca multiplo de 50: salvando') 
+           if ((epoca-1) % 2 == 0) and (epoca != 1):
+               print(f'Epoca par: salvando') 
                torch.save(gerador[tipo], os.path.expanduser('gerador_' + tipo[1:] + '.pt'))
                torch.save(discriminador[tipo], os.path.expanduser('discriminador_' + tipo[1:] + '.pt'))
                torch.save(avaliador[tipo], os.path.expanduser('avaliador_' + tipo[1:] + '.pt'))
@@ -432,11 +455,11 @@ for tipo in types:
            textos_reais[tipo].requires_grad_()
            
            """
-           tokens_obrigatorios1 = 'INICIO  '
+           tokens_obrigatorios1 = '# '
            obrigatorio1 = encoder(tokens_obrigatorios1,tipo,palavra_para_numero)
            obrigatorio1 = torch.tensor([obrigatorio1])
         
-           tokens_obrigatorios2 = ' . FIM ' 
+           tokens_obrigatorios2 = ' E  ' 
            obrigatorio2 = encoder(tokens_obrigatorios2,tipo,palavra_para_numero)
            obrigatorio2 = torch.tensor([obrigatorio2])
            
@@ -447,7 +470,6 @@ for tipo in types:
                min_length[tipo] = min_length[tipo] - tamanho_obrigatorio
 
            """
-
            lambda_correcao = 0
            tamanho_obrigatorio = 0
            #prompt_length = torch.randint(3, 3 + 1, (1,)).item()
@@ -459,7 +481,7 @@ for tipo in types:
 
            decoded = decoder(prompt[0].tolist(),tipo,numero_para_palavra)
            if verbose == 'on':
-               print(f"O prompt usado foi: {decoded}")
+               print(f"O prompt usado foi: {decoded}\ncom tamanho {prompt_length}")
 
            
            # Criando uma máscara de atenção
@@ -467,12 +489,14 @@ for tipo in types:
            mascara = torch.ones(prompt.size(0), valid_token_count).bool()  # Cria uma máscara de 1s
            mascara = F.pad(mascara, (0, max_length[tipo] - valid_token_count), value=False)  # Preenche o padding com False (0) 
            prompt = F.pad(prompt,(0, max_length[tipo] - valid_token_count), value=2) #Adiciona o token 2 $ de EOF no prompt gerado se menor que max_length[tipo]
+           
            texto_falso,_ = gerador[tipo](prompt,mask=mascara)
+           #texto_falso,_ = gerador[tipo](prompt)
            
            texto_falso.requires_grad_()
            texto_falso.retain_grad()
-           texto_falso_sliced = texto_falso[:, :valid_token_count, :]
-           texto_falso_max = torch.argmax(texto_falso_sliced, dim=-1)
+           #texto_falso_sliced = texto_falso[:, :valid_token_count, :]
+           texto_falso_max = torch.argmax(texto_falso, dim=-1)
            texto_falso_max = texto_falso_max.to(torch.int64)
            saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
            if verbose == 'on':
@@ -553,6 +577,7 @@ for tipo in types:
                  lambda_humano = 2
                  # Combina as perdas (pode usar uma média ponderada ou outra combinação). Usando media ponderada
                  perda_total = (lambda_humano * perda_humano)
+                 perda_total = torch.clamp(perda_total, max=95)
                  
                  print(f'Perda do Discriminador para texto gerado: {perda_total}')
                  perda_total.backward()
@@ -563,7 +588,7 @@ for tipo in types:
 
               passagem = passagem + 1
               if saida_disc_falsa[:,0] > saida_disc_falsa[:,1]:
-                  acuracia_gerador = acuracia_gerador + 50
+                  acuracia_gerador = acuracia_gerador + 1
               #perda = perda + perda_falso
               perda = perda_falso + perda_total + perda
               if verbose == 'on':
@@ -574,7 +599,8 @@ for tipo in types:
 
               if verbose == 'on':
                   print('Invertendo os rotulos e calculando a perda do gerador')
-              saida_falsa,_ = discriminador[tipo](saida_ajustada.detach(),mask=mascara)
+              #saida_falsa,_ = discriminador[tipo](saida_ajustada.detach(),mask=mascara)
+              saida_falsa,_ = discriminador[tipo](saida_ajustada.detach())
               saida_nova = torch.exp(saida_falsa)
               if verbose == 'on':
                   print(f'Saida do discriminador apos treinamento: {saida_nova}')
@@ -583,17 +609,18 @@ for tipo in types:
               perda_gerador = criterio_gerador(saida_nova,rotulos_invertidos)
               passagem = passagem + 1
               if saida_nova[:,0] > saida_nova[:,1]:
-                  acuracia_gerador = acuracia_gerador + 50
+                  acuracia_gerador = acuracia_gerador + 1
               
               perda_gerador.backward()
               otimizador_discriminador[tipo].zero_grad()
               otimizador_gerador[tipo].step()
               otimizador_gerador[tipo].zero_grad()
-              scheduler_gerador[tipo].step()
+              #scheduler_gerador[tipo].step()
 
-              print(f'Tipo {tipo}, Epoca {epoca} de {num_epocas}, Perda Discriminador {perda / 2}, Perda Gerador {perda_gerador}, Acuracia Gerador {acuracia_gerador}%')
+              print(f'Tipo {tipo}, Epoca {epoca} de {num_epocas}, Perda Discriminador {perda / 2}, Perda Gerador {perda_gerador}, Acuracia Gerador {acuracia_gerador * 50}%')
 
               texto_falso,_ = gerador[tipo](prompt,mask=mascara)
+              #texto_falso,_ = gerador[tipo](prompt)
               #texto_falso_int = texto_falso[:, :valid_token_count, :]
               texto_falso_max = torch.argmax(texto_falso, dim=-1)
               texto_falso_max = texto_falso_max.to(torch.int64) 
@@ -663,7 +690,7 @@ for tipo in types:
                  loss_falso = criterio_avaliador(saida_aval_falsa,rotulos_adap)
                  passagem = passagem + 1
                  if saida_aval_falsa[:,0] > saida_aval_falsa[:,1]:
-                     acuracia_gerador = acuracia_gerador + 50
+                     acuracia_gerador = acuracia_gerador + 1
 
                  if human == 'on' or human == 'aval' :
                     # Feedback humano para ajustar o avaliador
@@ -700,7 +727,7 @@ for tipo in types:
                  perda_gerador_nova = criterio_gerador(saida_aval_nova,rotulos_invertidos)
                  passagem = passagem + 1
                  if saida_aval_nova[:,0] > saida_aval_nova[:,1]:
-                     acuracia_gerador = acuracia_gerador + 50
+                     acuracia_gerador = acuracia_gerador + 1
                      print(f'Gerador enganou Avaliador')
               
                  perda_gerador_nova.backward()
@@ -709,11 +736,12 @@ for tipo in types:
                  print(f'Perda do Gerador depois do Avaliador: {perda_gerador_nova}')
 
               texto_falso_final,_ = gerador[tipo](prompt,mask=mascara)
-              texto_falso_final = texto_falso_final[:, :valid_token_count, :]
+              #texto_falso_final,_ = gerador[tipo](prompt)
+              #texto_falso_final = texto_falso_final[:, :valid_token_count, :]
               texto_falso_max = torch.argmax(texto_falso_final, dim=-1)
               texto_falso_max = texto_falso_max.to(torch.int64)
               saida = decoder(texto_falso_max[0].tolist(),tipo,numero_para_palavra)
-              print(f'Saida final: {saida}\n Com Acuracia Final de {acuracia_gerador} para {passagem} passagens.\n')
+              print(f'Saida final: {saida}\n Com Acuracia Final de {acuracia_gerador} para {passagem} passagens.\n Isso deu {acuracia_gerador/passagem*100}%')
 
 
 
