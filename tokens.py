@@ -4,7 +4,6 @@ import nltk
 import os
 import torch.nn as nn
 import torch.nn.functional as F
-UNK = 17854
 pasta = os.path.expanduser('~/gan/v1')
 # Tipos de arquivos que você quer gerar
 types = ['.mob']
@@ -85,6 +84,7 @@ def export_embeddings_to_json(model, numero_para_palavra, tipo, output_file="emb
         json.dump(embeddings_dict, f, indent=4)
 
 palavra_para_numero, numero_para_palavra = carregar_vocabulario(pasta, types)
+UNK = len(palavra_para_numero) - 1
 gerador = {}
 for tipo in types:
     gerador_path = os.path.expanduser('gerador_' + tipo[1:] + '.pt')
